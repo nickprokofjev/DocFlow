@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: docflow_postgres_dev
+    environment:
+      POSTGRES_DB: docflow
+      POSTGRES_USER: docflow_user
+      POSTGRES_PASSWORD: docflow_password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - docflow_dev_network
+
+  # FastAPI Backend (Development)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: docflow_backend_dev
+    environment:
+      DATABASE_URL: postgresql+asyncpg://docflow_user:docflow_password@postgres:5432/docflow
+      SECRET_KEY: development-secret-key
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    volumes:
+      - ./backend:/app
+      - uploads_dev_data:/app/uploads
+    ports:
+      - "8000:8000"
+    networks:
+      - docflow_dev_network
+    depends_on:
+      - postgres
+    command: ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Redis (Development)
+  redis:
+    image: redis:7-alpine
+    container_name: docflow_redis_dev
+    ports:
+      - "6379:6379"
+    networks:
+      - docflow_dev_network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  uploads_dev_data:
+    driver: local
+
+networks:
+  docflow_dev_network:
+    driver: bridge

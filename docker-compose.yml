@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: docflow_postgres
+    environment:
+      POSTGRES_DB: docflow
+      POSTGRES_USER: docflow_user
+      POSTGRES_PASSWORD: docflow_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - docflow_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docflow_user -d docflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: docflow_backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://docflow_user:docflow_password@postgres:5432/docflow
+      SECRET_KEY: your-super-secret-key-change-in-production
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "8000:8000"
+    networks:
+      - docflow_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: docflow_frontend
+    ports:
+      - "3000:80"
+    networks:
+      - docflow_network
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (optional for session storage)
+  redis:
+    image: redis:7-alpine
+    container_name: docflow_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - docflow_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  docflow_network:
+    driver: bridge
