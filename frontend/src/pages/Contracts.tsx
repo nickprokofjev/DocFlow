@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from 'react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { contractsAPI } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { 
@@ -8,8 +8,7 @@ import {
   Plus, 
   Search,
   Calendar,
-  DollarSign,
-  X
+  DollarSign
 } from 'lucide-react';
 import { ContractUploadModal } from '@/components/ContractUploadModal';
 
@@ -19,10 +18,29 @@ export function Contracts() {
   
   const queryClient = useQueryClient();
 
-  const { data: contracts, isLoading, error } = useQuery(
-    'contracts',
-    () => contractsAPI.getAll()
-  );
+  const { data: contracts, isLoading, error } = useQuery({
+    queryKey: ['contracts'],
+    queryFn: () => contractsAPI.getAll()
+  });
+
+  // Mutation for deleting contracts
+  // Мутация для удаления контрактов
+  const deleteMutation = useMutation({
+    mutationFn: contractsAPI.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+    },
+    onError: (error) => {
+      console.error('Failed to delete contract:', error);
+      alert('Failed to delete contract. Please try again.');
+    },
+  });
+
+  const handleDeleteContract = (contractId: number) => {
+    if (window.confirm('Are you sure you want to delete this contract?')) {
+      deleteMutation.mutate(contractId);
+    }
+  };
 
   const filteredContracts = contracts?.filter(contract =>
     contract.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -150,9 +168,18 @@ export function Contracts() {
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                     Active
                   </span>
-                  <button className="text-sm text-primary-600 hover:text-primary-500">
-                    View Details
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <button className="text-sm text-primary-600 hover:text-primary-500">
+                      View Details
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteContract(contract.id)}
+                      className="text-sm text-red-600 hover:text-red-500"
+                      disabled={deleteMutation.isPending}
+                    >
+                      {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -166,7 +193,7 @@ export function Contracts() {
           onClose={() => setShowUploadModal(false)}
           onSuccess={() => {
             setShowUploadModal(false);
-            queryClient.invalidateQueries('contracts');
+            queryClient.invalidateQueries({ queryKey: ['contracts'] });
           }}
         />
       )}

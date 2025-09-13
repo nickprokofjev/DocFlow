@@ -15,6 +15,7 @@
 - /auth/* - Маршруты аутентификации
 """
 import logging
+from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api import router
@@ -47,7 +48,8 @@ app.add_middleware(
 )
 
 # Add custom exception handlers
-app.add_exception_handler(DocFlowException, docflow_exception_handler)
+# Note: Using Exception base class for broader compatibility
+app.add_exception_handler(Exception, docflow_exception_handler)
 app.add_exception_handler(ValidationError, validation_exception_handler)
 
 # Include API routers
@@ -84,7 +86,7 @@ async def health_check():
         return {
             "status": "healthy",
             "database": "connected",
-            "timestamp": ""
+            "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
         logger.error(f"Ошибка проверки здоровья: {e}")

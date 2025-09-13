@@ -48,12 +48,10 @@ async def init_database():
             logger.info("Все таблицы успешно созданы")
             
         # Create default user if none exists
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
         from sqlalchemy import select
         from models import User
-        
-        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async_session = async_sessionmaker(bind=engine, expire_on_commit=False)
         async with async_session() as session:
             # Check if any users exist
             result = await session.execute(select(User))

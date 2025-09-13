@@ -64,6 +64,9 @@ async def create_contract(
     """
     logger.info("Начало загрузки договора: %s", number)
     # Сохраняем файл
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Ошибка: имя файла не указано")
+    
     ext = os.path.splitext(file.filename)[1]
     file_id = str(uuid4())
     file_path = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
@@ -108,7 +111,7 @@ async def create_contract(
     await db.commit()
     logger.info("Документ договора сохранён: id=%s", doc.id)
 
-    # OCR + NLP
+    # OCR + NLP - Обработка файла через OCR и NLP для извлечения текста и сущностей
     from ocr_nlp import extract_text_from_file, extract_contract_entities
     try:
         text = extract_text_from_file(file_path)
@@ -130,51 +133,7 @@ async def create_contract(
         "entities": entities
     })
 
-# Pydantic models for API requests/responses
-class PartyCreate(BaseModel):
-    name: str
-    inn: Optional[str] = None
-    kpp: Optional[str] = None
-    address: Optional[str] = None
-    role: str  # "customer" or "contractor"
-
-class PartyResponse(BaseModel):
-    id: int
-    name: str
-    inn: Optional[str]
-    kpp: Optional[str]
-    address: Optional[str]
-    role: str
-    
-    class Config:
-        from_attributes = True
-
-class ContractResponse(BaseModel):
-    id: int
-    number: str
-    date: date
-    subject: Optional[str]
-    amount: Optional[float]
-    deadline: Optional[date]
-    penalties: Optional[str]
-    customer_id: int
-    contractor_id: int
-    
-    class Config:
-        from_attributes = True
-
-class ContractDocumentResponse(BaseModel):
-    id: int
-    contract_id: int
-    doc_type: str
-    file_path: str
-    date: Optional[date]
-    description: Optional[str]
-    
-    class Config:
-        from_attributes = True
-
-# CRUD endpoints for Parties
+# CRUD endpoints for Parties - Эндпоинты для работы со сторонами договоров
 @router.post("/parties/", response_model=PartyResponse)
 async def create_party(
     party: PartyCreate,
@@ -373,3 +332,4 @@ async def get_all_documents(
     except Exception as e:
         logger.error(f"Error getting documents: {e}")
         raise HTTPException(status_code=500, detail="Error retrieving documents")
+

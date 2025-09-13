@@ -11,7 +11,7 @@
 """
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +84,7 @@ def verify_token(token: str) -> Optional[dict]:
     """Verify JWT token and return payload."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
+        username = payload.get("sub")
         if username is None:
             return None
         return payload
@@ -109,7 +109,7 @@ async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User
     result = await db.execute(select(User).where(User.username == username))
     return result.scalar_one_or_none()
 
-async def authenticate_user(db: AsyncSession, username: str, password: str) -> Union[User, bool]:
+async def authenticate_user(db: AsyncSession, username: str, password: str) -> Optional[User]:
     """Authenticate user with username/email and password."""
     # Try to find user by email first, then by username
     user = await get_user_by_email(db, username)
@@ -117,9 +117,9 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> U
         user = await get_user_by_username(db, username)
     
     if not user:
-        return False
+        return None
     if not verify_password(password, user.hashed_password):
-        return False
+        return None
     return user
 
 async def get_current_user(
@@ -138,7 +138,7 @@ async def get_current_user(
     if payload is None:
         raise credentials_exception
     
-    username: str = payload.get("sub")
+    username = payload.get("sub")
     if username is None:
         raise credentials_exception
     

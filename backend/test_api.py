@@ -3,23 +3,22 @@ Basic API tests for DocFlow backend.
 """
 import pytest
 import asyncio
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 import os
 import tempfile
 
 from main import app
 from models import Base
-from db import get_db
+from auth import get_db
 
 # Test database URL - use SQLite for testing
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
 # Create test engine and session
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=True)
-TestSessionLocal = sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+TestSessionLocal = async_sessionmaker(bind=test_engine, expire_on_commit=False)
 
 async def get_test_db():
     """Override database dependency for testing."""
@@ -51,7 +50,8 @@ async def setup_database():
 @pytest.fixture
 async def client(setup_database):
     """Create test client."""
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
 class TestAPI:

@@ -1,5 +1,11 @@
 """
 Authentication API endpoints for DocFlow.
+
+Обрабатывает все эндпоинты аутентификации:
+- Регистрация новых пользователей
+- Вход в систему и создание JWT токенов
+- Получение информации о текущем пользователе
+- Выход из системы
 """
 import logging
 from datetime import timedelta
@@ -103,7 +109,7 @@ async def login(
     logger.info(f"Login attempt for: {form_data.username}")
     
     user = await authenticate_user(db, form_data.username, form_data.password)
-    if not user:
+    if user is None:
         logger.warning(f"Failed login attempt for: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -1,23 +1,23 @@
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { contractsAPI, partiesAPI, healthAPI } from '@/lib/api';
 import { FileText, Users, CheckCircle, AlertCircle } from 'lucide-react';
 
 export function Dashboard() {
-  const { data: contracts, isLoading: contractsLoading } = useQuery(
-    'contracts',
-    () => contractsAPI.getAll({ limit: 5 })
-  );
+  const { data: contracts, isLoading: contractsLoading } = useQuery({
+    queryKey: ['contracts'],
+    queryFn: () => contractsAPI.getAll({ limit: 5 })
+  });
 
-  const { data: parties, isLoading: partiesLoading } = useQuery(
-    'parties',
-    () => partiesAPI.getAll({ limit: 5 })
-  );
+  const { data: parties, isLoading: partiesLoading } = useQuery({
+    queryKey: ['parties'], 
+    queryFn: () => partiesAPI.getAll({ limit: 5 })
+  });
 
-  const { data: health } = useQuery(
-    'health',
-    healthAPI.check,
-    { refetchInterval: 30000 }
-  );
+  const { data: health } = useQuery({
+    queryKey: ['health'],
+    queryFn: healthAPI.check,
+    refetchInterval: 30000
+  });
 
   const stats = [
     {

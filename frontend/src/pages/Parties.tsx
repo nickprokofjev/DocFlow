@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from 'react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { partiesAPI } from '@/lib/api';
 import { 
   Users, 
@@ -21,32 +21,32 @@ export function Parties() {
   
   const queryClient = useQueryClient();
 
-  const { data: parties, isLoading, error } = useQuery(
-    ['parties', roleFilter],
-    () => partiesAPI.getAll({ role: roleFilter || undefined })
-  );
+  const { data: parties, isLoading, error } = useQuery({
+    queryKey: ['parties', roleFilter],
+    queryFn: () => partiesAPI.getAll({ role: roleFilter || undefined })
+  });
 
-  const createMutation = useMutation(partiesAPI.create, {
+  const createMutation = useMutation({
+    mutationFn: partiesAPI.create,
     onSuccess: () => {
-      queryClient.invalidateQueries('parties');
+      queryClient.invalidateQueries({ queryKey: ['parties'] });
       setShowCreateModal(false);
     },
   });
 
-  const updateMutation = useMutation(
-    ({ id, data }: { id: number; data: Partial<CreatePartyRequest> }) =>
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<CreatePartyRequest> }) =>
       partiesAPI.update(id, data),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('parties');
-        setEditingParty(null);
-      },
-    }
-  );
-
-  const deleteMutation = useMutation(partiesAPI.delete, {
     onSuccess: () => {
-      queryClient.invalidateQueries('parties');
+      queryClient.invalidateQueries({ queryKey: ['parties'] });
+      setEditingParty(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: partiesAPI.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['parties'] });
     },
   });
 
@@ -149,7 +149,7 @@ export function Parties() {
                     party={party}
                     onSave={(data) => updateMutation.mutate({ id: party.id, data })}
                     onCancel={() => setEditingParty(null)}
-                    isLoading={updateMutation.isLoading}
+                    isLoading={updateMutation.isPending}
                   />
                 ) : (
                   <div className="px-4 py-4 flex items-center justify-between hover:bg-gray-50">
@@ -215,7 +215,7 @@ export function Parties() {
         <CreatePartyModal
           onClose={() => setShowCreateModal(false)}
           onSave={(data) => createMutation.mutate(data)}
-          isLoading={createMutation.isLoading}
+          isLoading={createMutation.isPending}
         />
       )}
     </div>

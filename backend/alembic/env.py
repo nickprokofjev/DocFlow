@@ -1,12 +1,20 @@
 import os
 import sys
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+
+# Ensure SQLAlchemy can be found
+try:
+    from sqlalchemy import engine_from_config
+    from sqlalchemy import pool
+except ImportError as e:
+    print(f"SQLAlchemy import error: {e}")
+    print("Please ensure SQLAlchemy is installed in your virtual environment")
+    raise
+
 from alembic import context
 
 # Add the project root to the path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import your models here
 from models import Base
@@ -65,7 +73,7 @@ def run_migrations_online() -> None:
 
     """
     # Override the sqlalchemy.url configuration with our function
-    configuration = config.get_section(config.config_ini_section)
+    configuration = config.get_section(config.config_ini_section) or {}
     configuration['sqlalchemy.url'] = get_database_url()
     
     connectable = engine_from_config(

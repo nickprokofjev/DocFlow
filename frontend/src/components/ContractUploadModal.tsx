@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from 'react-query';
+import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -39,11 +39,13 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
     resolver: zodResolver(contractSchema),
   });
 
-  const uploadMutation = useMutation(contractsAPI.upload, {
+  const uploadMutation = useMutation({
+    mutationFn: contractsAPI.upload,
     onSuccess: (data) => {
       setUploadStatus('success');
       setOcrResult(data);
       setTimeout(() => {
+        handleClose();
         onSuccess();
       }, 2000);
     },
@@ -96,17 +98,30 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
     }
   };
 
+  const handleClose = () => {
+    reset();
+    setFile(null);
+    setUploadStatus('idle');
+    setOcrResult(null);
+    onClose();
+  };
+
+  const handleTryAgain = () => {
+    setUploadStatus('idle');
+    setOcrResult(null);
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} />
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={handleClose} />
 
         <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
           <div className="absolute top-0 right-0 pt-4 pr-4">
             <button
               type="button"
               className="bg-white rounded-md text-gray-400 hover:text-gray-600 focus:outline-none"
-              onClick={onClose}
+              onClick={handleClose}
             >
               <X className="h-6 w-6" />
             </button>
@@ -142,7 +157,7 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
                     Please try again or contact support.
                   </p>
                   <button
-                    onClick={() => setUploadStatus('idle')}
+                    onClick={handleTryAgain}
                     className="mt-4 btn btn-secondary"
                   >
                     Try Again
@@ -280,7 +295,7 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
                   <div className="flex justify-end space-x-3 pt-4">
                     <button
                       type="button"
-                      onClick={onClose}
+                      onClick={handleClose}
                       className="btn btn-secondary"
                       disabled={uploadStatus === 'uploading'}
                     >

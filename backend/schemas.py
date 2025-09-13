@@ -1,58 +1,59 @@
+# -*- coding: utf-8 -*-
 """
-Схемы Pydantic для валидации запросов/ответов в DocFlow API.
+Pydantic schemas for DocFlow API request/response validation.
 
-Определяет структуры данных для:
-- Сторон договоров (заказчики/подрядчики)
-- Договоров с основными реквизитами
-- Документов и связей между ними
-- Ответов API с обработкой ошибок
+Defines data structures for:
+- Contract parties (customers/contractors)
+- Contracts with main attributes
+- Documents and their relationships
+- API responses with error handling
 
-Включает валидацию:
-- ИНН/КПП для организаций
-- Дат и сроков выполнения
-- Ролей сторон и типов документов
+Includes validation for:
+- Tax numbers (INN/KPP) for organizations
+- Dates and deadlines
+- Party roles and document types
 """
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional
-from datetime import date
+from datetime import date as Date
 import re
 
 class PartyCreate(BaseModel):
     """
-    Схема для создания новой стороны договора.
-    Поддерживает валидацию ИНН (должен быть 10 или 12 цифр) и КПП (9 цифр).
+    Schema for creating a new contract party.
+    Supports validation of INN (10 or 12 digits) and KPP (9 digits).
     """
-    name: str = Field(..., min_length=1, max_length=500, description="Название стороны")
-    inn: Optional[str] = Field(None, min_length=10, max_length=12, description="ИНН (налоговый номер)")
-    kpp: Optional[str] = Field(None, min_length=9, max_length=9, description="Код КПП")
-    address: Optional[str] = Field(None, max_length=1000, description="Адрес")
-    role: str = Field(..., description="Роль стороны: customer или contractor")
+    name: str = Field(..., min_length=1, max_length=500, description="Party name")
+    inn: Optional[str] = Field(None, min_length=10, max_length=12, description="Tax identification number")
+    kpp: Optional[str] = Field(None, min_length=9, max_length=9, description="Tax registration code")
+    address: Optional[str] = Field(None, max_length=1000, description="Address")
+    role: str = Field(..., description="Party role: customer or contractor")
     
     @validator('role')
     def validate_role(cls, v):
-        """Проверяет, что роль является либо customer, либо contractor."""
+        """Validates that role is either customer or contractor."""
         if v not in ['customer', 'contractor']:
-            raise ValueError('Роль должна быть либо "customer", либо "contractor"')
+            raise ValueError('Role must be either "customer" or "contractor"')
         return v
     
     @validator('inn')
     def validate_inn(cls, v):
-        """Проверяет формат ИНН (10 или 12 цифр)."""
+        """Validates INN format (10 or 12 digits)."""
         if v is not None:
-            # Удаляем пробелы и проверяем формат ИНН
+            # Remove spaces and validate INN format
             v = re.sub(r'\s+', '', v)
             if not re.match(r'^\d{10}$|^\d{12}$', v):
-                raise ValueError('ИНН должен состоять из 10 или 12 цифр')
+                raise ValueError('INN must contain 10 or 12 digits')
         return v
     
     @validator('kpp')
     def validate_kpp(cls, v):
-        """Проверяет формат КПП (9 цифр)."""
+        """Validates KPP format (9 digits)."""
         if v is not None:
-            # Удаляем пробелы и проверяем формат КПП
+            # Remove spaces and validate KPP format
             v = re.sub(r'\s+', '', v)
             if not re.match(r'^\d{9}$', v):
-                raise ValueError('КПП должен состоять из 9 цифр')
+                raise ValueError('KPP must contain 9 digits')
         return v
 
 class PartyUpdate(BaseModel):
@@ -81,10 +82,10 @@ class PartyResponse(BaseModel):
 
 class ContractCreate(BaseModel):
     number: str = Field(..., min_length=1, max_length=100, description="Contract number")
-    date: date = Field(..., description="Contract date")
+    date: Date = Field(..., description="Contract date")
     subject: Optional[str] = Field(None, max_length=2000, description="Contract subject")
     amount: Optional[float] = Field(None, gt=0, description="Contract amount")
-    deadline: Optional[date] = Field(None, description="Contract deadline")
+    deadline: Optional[Date] = Field(None, description="Contract deadline")
     penalties: Optional[str] = Field(None, max_length=2000, description="Penalty terms")
     customer_id: int = Field(..., gt=0, description="Customer party ID")
     contractor_id: int = Field(..., gt=0, description="Contractor party ID")
@@ -104,10 +105,10 @@ class ContractCreate(BaseModel):
 class ContractResponse(BaseModel):
     id: int
     number: str
-    date: date
+    date: Date
     subject: Optional[str]
     amount: Optional[float]
-    deadline: Optional[date]
+    deadline: Optional[Date]
     penalties: Optional[str]
     customer_id: int
     contractor_id: int
@@ -122,7 +123,7 @@ class ContractWithPartiesResponse(ContractResponse):
 class ContractDocumentCreate(BaseModel):
     contract_id: int = Field(..., gt=0, description="Contract ID")
     doc_type: str = Field(..., description="Document type")
-    date: Optional[date] = Field(None, description="Document date")
+    date: Optional[Date] = Field(None, description="Document date")
     description: Optional[str] = Field(None, max_length=2000, description="Document description")
     
     @validator('doc_type')
@@ -137,7 +138,7 @@ class ContractDocumentResponse(BaseModel):
     contract_id: int
     doc_type: str
     file_path: str
-    date: Optional[date]
+    date: Optional[Date]
     description: Optional[str]
     
     class Config:
@@ -165,10 +166,10 @@ class DocumentLinkResponse(BaseModel):
 
 class UploadContractRequest(BaseModel):
     number: str = Field(..., min_length=1, max_length=100)
-    contract_date: date
+    contract_date: Date
     subject: Optional[str] = Field(None, max_length=2000)
     amount: Optional[float] = Field(None, gt=0)
-    deadline: Optional[date] = None
+    deadline: Optional[Date] = None
     penalties: Optional[str] = Field(None, max_length=2000)
     customer_name: str = Field(..., min_length=1, max_length=500)
     contractor_name: str = Field(..., min_length=1, max_length=500)
