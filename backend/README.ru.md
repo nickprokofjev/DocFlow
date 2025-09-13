@@ -63,6 +63,12 @@ python init_db.py
 # Простой запуск
 python start.py
 
+# Тестовый запуск без авторизации
+python start_ocr_test.py
+
+Сервер будет доступен по адресу: http://0.0.0.0:8000 
+
+
 # Или напрямую через uvicorn
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
