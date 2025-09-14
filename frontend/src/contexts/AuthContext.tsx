@@ -50,8 +50,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    console.log('Attempting login with:', { email, password });
     try {
       const response = await authAPI.login({ username: email, password });
+      console.log('Login response:', response);
       const { access_token, user: userData } = response;
 
       setToken(access_token);
@@ -59,8 +61,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       localStorage.setItem('token', access_token);
       localStorage.setItem('user', JSON.stringify(userData));
-    } catch (error) {
+      console.log('Login successful, token and user saved to localStorage');
+    } catch (error: any) {
       console.error('Login failed:', error);
+      console.error('Login error response:', error.response);
+      // Don't redirect immediately, let the login component handle the error
       throw error;
     }
   };

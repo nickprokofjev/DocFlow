@@ -19,16 +19,26 @@ export function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Form submitted with:', { email, password });
     setError('');
     setIsLoading(true);
 
     try {
       await login(email, password);
-      navigate('/', { replace: true });
+      console.log('Login successful, navigating to dashboard');
+      // Add a small delay to see the success message
+      setTimeout(() => {
+        navigate('/', { replace: true });
+      }, 1000);
     } catch (err: any) {
+      console.error('Login error:', err);
+      console.error('Login error response:', err.response);
       setError(err.response?.data?.detail || 'Login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
+      // Keep the loading state for a bit longer to see the error
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 2000);
+      return;
     }
   };
 

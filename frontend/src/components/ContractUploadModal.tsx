@@ -85,7 +85,7 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
 
   // Мутация для запуска извлечения данных
   const extractMutation = useMutation({
-    mutationFn: contractsAPI.extractData,
+    mutationFn: (file: File) => contractsAPI.extractData(file),
     onSuccess: (response) => {
       if (response.success && response.data?.job_id) {
         const newJobId = response.data.job_id;
@@ -93,10 +93,10 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
         setStep('extracting');
         setProgress(0);
         
-        // Начинаем опрос статуса каждые 2 секунды
+        // Начинаем опрос статуса каждые 1 секунду для более быстрой реакции
         pollingIntervalRef.current = setInterval(() => {
           pollJobStatus(newJobId);
-        }, 2000);
+        }, 1000);
         
         // Сразу проверяем статус
         pollJobStatus(newJobId);
@@ -113,7 +113,7 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
 
   // Мутация для сохранения контракта
   const uploadMutation = useMutation({
-    mutationFn: contractsAPI.upload,
+    mutationFn: (data: any) => contractsAPI.upload(data),
     onSuccess: () => {
       setStep('success');
       setTimeout(() => {
@@ -129,6 +129,9 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
 
   const handleFileUpload = () => {
     if (!file) return;
+    // Immediately transition to extracting step to show progress
+    setStep('extracting');
+    setProgress(0);
     extractMutation.mutate(file);
   };
 
@@ -136,12 +139,32 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
     if (!file) return;
     setStep('saving');
 
-    const uploadData = {
-      ...editedData,
-      file,
-    };
+    // Prepare the form data with proper validation
+    const formData = new FormData();
+    
+    // Add the file
+    formData.append('file', file);
+    
+    // Add required fields with default values if empty
+    formData.append('number', editedData.number || 'Номер не указан');
+    formData.append('contract_date', editedData.contract_date || new Date().toISOString().split('T')[0]);
+    formData.append('customer_name', editedData.customer_name || 'Заказчик не указан');
+    formData.append('contractor_name', editedData.contractor_name || 'Подрядчик не указан');
+    
+    // Add optional fields only if they have values
+    if (editedData.subject) formData.append('subject', editedData.subject);
+    if (editedData.amount) formData.append('amount', editedData.amount.toString());
+    if (editedData.deadline) formData.append('deadline', editedData.deadline);
+    if (editedData.penalties) formData.append('penalties', editedData.penalties);
+    if (editedData.contract_type) formData.append('contract_type', editedData.contract_type);
+    if (editedData.work_object_name) formData.append('work_object_name', editedData.work_object_name);
+    if (editedData.cadastral_number) formData.append('cadastral_number', editedData.cadastral_number);
+    if (editedData.construction_permit) formData.append('construction_permit', editedData.construction_permit);
+    if (editedData.amount_including_vat) formData.append('amount_including_vat', editedData.amount_including_vat.toString());
+    if (editedData.vat_rate) formData.append('vat_rate', editedData.vat_rate.toString());
+    if (editedData.warranty_period_months) formData.append('warranty_period_months', editedData.warranty_period_months.toString());
 
-    uploadMutation.mutate(uploadData);
+    uploadMutation.mutate(formData);
   };
 
   const handleClose = () => {

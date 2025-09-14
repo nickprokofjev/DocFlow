@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 import os
 
 # URL подключения к базе данных из переменных окружения
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql+asyncpg://user:password@localhost/docflow')
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql+asyncpg://docflow_user:docflow_password@localhost/docflow')
 # Синхронная версия для совместимости
 SYNC_DATABASE_URL = DATABASE_URL.replace('+asyncpg', '')
 
