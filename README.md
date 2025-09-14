@@ -85,6 +85,30 @@ docker-compose -f docker-compose.dev.yml up -d
 - **Email**: admin@example.com
 - **Password**: admin123
 
+### 5. Troubleshooting "User Not Found" Issues
+
+If you encounter "User not found" errors when trying to log in:
+
+#### Quick Fix (Windows):
+```bash
+# Run the demo user creation script
+create_demo_user.bat
+```
+
+#### Manual Fix:
+```bash
+# Create demo users manually
+python create_demo_user.py
+
+# Or reset admin user
+python backend/create_admin.py
+```
+
+#### Available Demo Accounts:
+- **Admin**: admin@example.com / admin123 (Full access)
+- **Demo**: demo@example.com / demo123 (Demo user) 
+- **User**: user@example.com / user123 (Regular user)
+
 ## 🔧 Настройка среды разработки
 
 ### Разработка бэкенда

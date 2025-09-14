@@ -1,123 +1,193 @@
-/**
- * Utility functions for formatting and common operations
- */
+// Утилитарные функции для приложения DocFlow
 
 /**
- * Format a date string to a localized format
- * @param dateString - ISO date string or date string
- * @param options - Intl.DateTimeFormat options
- * @returns Formatted date string
+ * Форматирует дату в локальном формате
  */
-export function formatDate(
-  dateString: string | null | undefined,
-  options: Intl.DateTimeFormatOptions = {
+export const formatDate = (dateString: string | Date): string => {
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+  return date.toLocaleDateString('ru-RU', {
     year: 'numeric',
-    month: 'short',
-    day: 'numeric'
+    month: '2-digit',
+    day: '2-digit',
+  });
+};
+
+/**
+ * Форматирует валюту в рублях
+ */
+export const formatCurrency = (amount: number, currency?: string): string => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: currency || 'RUB',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount);
+};
+
+/**
+ * Форматирует размер файла
+ */
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+/**
+ * Склонение слов в зависимости от числа
+ */
+export const pluralize = (count: number, singular: string, few: string, many: string): string => {
+  const lastDigit = count % 10;
+  const lastTwoDigits = count % 100;
+
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+    return many;
+  } else if (lastDigit === 1) {
+    return singular;
+  } else if (lastDigit >= 2 && lastDigit <= 4) {
+    return few;
+  } else {
+    return many;
   }
-): string {
-  if (!dateString) return 'N/A';
+};
+
+/**
+ * Обрезает строку до заданной длины
+ */
+export const truncateText = (text: string, maxLength: number): string => {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + '...';
+};
+
+/**
+ * Проверяет валидность email
+ */
+export const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+/**
+ * Проверяет валидность ИНН
+ */
+export const isValidINN = (inn: string): boolean => {
+  if (!inn || typeof inn !== 'string') return false;
   
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'Invalid Date';
-    
-    return new Intl.DateTimeFormat('en-US', options).format(date);
-  } catch (error) {
-    console.error('Error formatting date:', error);
-    return 'Invalid Date';
+  // Удаляем пробелы
+  inn = inn.replace(/\s/g, '');
+  
+  // Проверяем длину (10 или 12 цифр)
+  if (!/^\d{10}$/.test(inn) && !/^\d{12}$/.test(inn)) return false;
+  
+  // Проверяем контрольные цифры
+  if (inn.length === 10) {
+    return checkINN10(inn);
+  } else {
+    return checkINN12(inn);
   }
+};
+
+function checkINN10(inn: string): boolean {
+  const coefficients = [2, 4, 10, 3, 5, 9, 4, 6, 8];
+  let sum = 0;
+  
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(inn[i]) * coefficients[i];
+  }
+  
+  const controlDigit = (sum % 11) % 10;
+  return controlDigit === parseInt(inn[9]);
+}
+
+function checkINN12(inn: string): boolean {
+  const coefficients1 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+  const coefficients2 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+  
+  let sum1 = 0;
+  let sum2 = 0;
+  
+  for (let i = 0; i < 10; i++) {
+    sum1 += parseInt(inn[i]) * coefficients1[i];
+  }
+  
+  for (let i = 0; i < 11; i++) {
+    sum2 += parseInt(inn[i]) * coefficients2[i];
+  }
+  
+  const control1 = (sum1 % 11) % 10;
+  const control2 = (sum2 % 11) % 10;
+  
+  return control1 === parseInt(inn[10]) && control2 === parseInt(inn[11]);
 }
 
 /**
- * Format a currency amount
- * @param amount - The amount to format
- * @param currency - Currency code (default: 'USD')
- * @param locale - Locale for formatting (default: 'en-US')
- * @returns Formatted currency string
+ * Проверяет валидность КПП
  */
-export function formatCurrency(
-  amount: number | null | undefined,
-  currency: string = 'USD',
-  locale: string = 'en-US'
-): string {
-  if (amount === null || amount === undefined) return 'N/A';
+export const isValidKPP = (kpp: string): boolean => {
+  if (!kpp || typeof kpp !== 'string') return false;
   
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount);
-  } catch (error) {
-    console.error('Error formatting currency:', error);
-    // Fallback formatting
-    return `${currency} ${amount.toFixed(2)}`;
+  // Удаляем пробелы
+  kpp = kpp.replace(/\s/g, '');
+  
+  // КПП должен содержать 9 символов: 4 цифры, 2 буквы или цифры, 3 цифры
+  return /^\d{4}[\dA-Z]{2}\d{3}$/.test(kpp);
+};
+
+/**
+ * Генерирует случайный ID
+ */
+export const generateId = (): string => {
+  return Math.random().toString(36).substr(2, 9);
+};
+
+/**
+ * Задержка выполнения
+ */
+export const delay = (ms: number): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
+/**
+ * Определяет цвет статуса
+ */
+export const getStatusColor = (status: string): string => {
+  switch (status?.toLowerCase()) {
+    case 'active':
+    case 'completed':
+    case 'healthy':
+      return 'text-green-600 bg-green-100';
+    case 'pending':
+    case 'processing':
+      return 'text-yellow-600 bg-yellow-100';
+    case 'failed':
+    case 'error':
+    case 'cancelled':
+      return 'text-red-600 bg-red-100';
+    case 'draft':
+      return 'text-gray-600 bg-gray-100';
+    default:
+      return 'text-blue-600 bg-blue-100';
   }
-}
+};
 
 /**
- * Clamp a number between min and max values
- * @param value - Value to clamp
- * @param min - Minimum value
- * @param max - Maximum value
- * @returns Clamped value
+ * Получает читаемое название статуса
  */
-export function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-/**
- * Create a debounced function
- * @param func - Function to debounce
- * @param wait - Wait time in milliseconds
- * @returns Debounced function
- */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => func.apply(null, args), wait);
+export const getStatusLabel = (status: string): string => {
+  const statusLabels: Record<string, string> = {
+    active: 'Активный',
+    completed: 'Завершён',
+    pending: 'Ожидает',
+    processing: 'Обрабатывается',
+    failed: 'Ошибка',
+    cancelled: 'Отменён',
+    draft: 'Черновик',
+    healthy: 'Работает',
   };
-}
-
-/**
- * Generate a random ID string
- * @param length - Length of the ID (default: 8)
- * @returns Random ID string
- */
-export function generateId(length: number = 8): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-/**
- * Capitalize the first letter of a string
- * @param str - String to capitalize
- * @returns Capitalized string
- */
-export function capitalize(str: string): string {
-  if (!str) return str;
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/**
- * Truncate text to a specified length
- * @param text - Text to truncate
- * @param maxLength - Maximum length
- * @param suffix - Suffix to add (default: '...')
- * @returns Truncated text
- */
-export function truncate(text: string, maxLength: number, suffix: string = '...'): string {
-  if (!text || text.length <= maxLength) return text;
-  return text.slice(0, maxLength - suffix.length) + suffix;
-}
+  
+  return statusLabels[status?.toLowerCase()] || status;
+};

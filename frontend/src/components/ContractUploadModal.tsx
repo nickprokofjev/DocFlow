@@ -1,32 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { contractsAPI } from '@/lib/api';
-import { X, Upload, AlertCircle, CheckCircle } from 'lucide-react';
+import { contractsAPI, JobStatus } from '@/lib/api';
+import { X, Upload, AlertCircle, CheckCircle, FileText, Loader2, Clock } from 'lucide-react';
 
-const contractSchema = z.object({
-  number: z.string().min(1, 'Contract number is required'),
-  contract_date: z.string().min(1, 'Contract date is required'),
-  subject: z.string().optional(),
-  amount: z.string().optional(),
-  deadline: z.string().optional(),
-  penalties: z.string().optional(),
-  customer_name: z.string().min(1, 'Customer name is required'),
-  contractor_name: z.string().min(1, 'Contractor name is required'),
-  // Extended fields
-  contract_type: z.string().optional(),
-  work_object_name: z.string().optional(),
-  work_object_address: z.string().optional(),
-  cadastral_number: z.string().optional(),
-  construction_permit: z.string().optional(),
-  amount_including_vat: z.string().optional(),
-  vat_rate: z.string().optional(),
-  warranty_period_months: z.string().optional(),
-});
-
-type ContractFormData = z.infer<typeof contractSchema>;
+type UploadStep = 'upload' | 'extracting' | 'review' | 'saving' | 'success' | 'error';
 
 interface ContractUploadModalProps {
   onClose: () => void;
@@ -34,54 +11,174 @@ interface ContractUploadModalProps {
 }
 
 export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalProps) {
+  const [step, setStep] = useState<UploadStep>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
-  const [ocrResult, setOcrResult] = useState<any>(null);
+  const [extractedData, setExtractedData] = useState<any>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [editedData, setEditedData] = useState<any>({});
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [progress, setProgress] = useState(0);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-  } = useForm<ContractFormData>({
-    resolver: zodResolver(contractSchema),
+  // Очистка интервала при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Функция для опроса статуса задачи
+  const pollJobStatus = async (currentJobId: string) => {
+    try {
+      const response = await contractsAPI.getJobStatus(currentJobId);
+      
+      if (response.success && response.data) {
+        const status = response.data;
+        setJobStatus(status);
+        setProgress(status.progress);
+
+        if (status.status === 'completed') {
+          // Задача завершена успешно
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          
+          if (status.result) {
+            setExtractedData(status.result);
+            setEditedData(status.result.contract_data || {});
+            setStep('review');
+          } else {
+            setErrorMessage('Результат обработки пуст');
+            setStep('error');
+          }
+        } else if (status.status === 'failed') {
+          // Задача завершена с ошибкой
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          
+          setErrorMessage(status.error || 'Неизвестная ошибка при обработке');
+          setStep('error');
+        } else if (status.status === 'cancelled') {
+          // Задача отменена
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          
+          setErrorMessage('Обработка была отменена');
+          setStep('error');
+        }
+        // Для статусов 'pending' и 'processing' продолжаем опрос
+      }
+    } catch (error: any) {
+      console.error('Ошибка при получении статуса задачи:', error);
+      // Не прерываем опрос при сетевых ошибках, попробуем ещё раз
+    }
+  };
+
+  // Мутация для запуска извлечения данных
+  const extractMutation = useMutation({
+    mutationFn: contractsAPI.extractData,
+    onSuccess: (response) => {
+      if (response.success && response.data?.job_id) {
+        const newJobId = response.data.job_id;
+        setJobId(newJobId);
+        setStep('extracting');
+        setProgress(0);
+        
+        // Начинаем опрос статуса каждые 2 секунды
+        pollingIntervalRef.current = setInterval(() => {
+          pollJobStatus(newJobId);
+        }, 2000);
+        
+        // Сразу проверяем статус
+        pollJobStatus(newJobId);
+      } else {
+        setErrorMessage(response.message || 'Ошибка при запуске обработки');
+        setStep('error');
+      }
+    },
+    onError: (error: any) => {
+      setErrorMessage(error.message || 'Ошибка сети');
+      setStep('error');
+    },
   });
 
+  // Мутация для сохранения контракта
   const uploadMutation = useMutation({
     mutationFn: contractsAPI.upload,
-    onSuccess: (data) => {
-      setUploadStatus('success');
-      setOcrResult(data);
+    onSuccess: () => {
+      setStep('success');
       setTimeout(() => {
         handleClose();
         onSuccess();
       }, 2000);
     },
-    onError: (error) => {
-      setUploadStatus('error');
-      console.error('Upload failed:', error);
+    onError: (error: any) => {
+      setErrorMessage(error.message || 'Ошибка при сохранении');
+      setStep('error');
     },
   });
 
-  const onSubmit = async (data: ContractFormData) => {
-    if (!file) {
-      alert('Please select a file');
-      return;
-    }
+  const handleFileUpload = () => {
+    if (!file) return;
+    extractMutation.mutate(file);
+  };
 
-    setUploadStatus('uploading');
+  const handleSave = () => {
+    if (!file) return;
+    setStep('saving');
 
     const uploadData = {
-      ...data,
-      amount: data.amount ? parseFloat(data.amount) : undefined,
-      amount_including_vat: data.amount_including_vat ? parseFloat(data.amount_including_vat) : undefined,
-      vat_rate: data.vat_rate ? parseFloat(data.vat_rate) : undefined,
-      warranty_period_months: data.warranty_period_months ? parseInt(data.warranty_period_months) : undefined,
+      ...editedData,
       file,
     };
 
     uploadMutation.mutate(uploadData);
+  };
+
+  const handleClose = () => {
+    // Отменяем задачу, если она выполняется
+    if (jobId && jobStatus?.status === 'processing') {
+      contractsAPI.cancelJob(jobId).catch(console.error);
+    }
+    
+    // Очищаем интервал
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    
+    // Сбрасываем состояние
+    setFile(null);
+    setStep('upload');
+    setExtractedData(null);
+    setErrorMessage('');
+    setJobId(null);
+    setJobStatus(null);
+    setProgress(0);
+    onClose();
+  };
+
+  const handleRetry = () => {
+    // Очищаем предыдущее состояние
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    
+    setJobId(null);
+    setJobStatus(null);
+    setProgress(0);
+    setErrorMessage('');
+    setStep('upload');
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -98,7 +195,6 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setFile(e.dataTransfer.files[0]);
     }
@@ -110,17 +206,8 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
     }
   };
 
-  const handleClose = () => {
-    reset();
-    setFile(null);
-    setUploadStatus('idle');
-    setOcrResult(null);
-    onClose();
-  };
-
-  const handleTryAgain = () => {
-    setUploadStatus('idle');
-    setOcrResult(null);
+  const updateField = (field: string, value: string) => {
+    setEditedData((prev: any) => ({ ...prev, [field]: value }));
   };
 
   return (
@@ -128,7 +215,7 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={handleClose} />
 
-        <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
+        <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full sm:p-6">
           <div className="absolute top-0 right-0 pt-4 pr-4">
             <button
               type="button"
@@ -139,287 +226,323 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
             </button>
           </div>
 
-          <div className="sm:flex sm:items-start">
-            <div className="w-full">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Upload Contract
-              </h3>
+          <div className="w-full">
+            {/* Прогресс-бар */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <span className={step === 'upload' ? 'font-medium text-blue-600' : ''}>
+                  1. Загрузка файла
+                </span>
+                <span className={['extracting', 'review', 'saving', 'success'].includes(step) ? 'font-medium text-blue-600' : ''}>
+                  2. Извлечение данных
+                </span>
+                <span className={['review', 'saving', 'success'].includes(step) ? 'font-medium text-blue-600' : ''}>
+                  3. Проверка
+                </span>
+                <span className={['saving', 'success'].includes(step) ? 'font-medium text-blue-600' : ''}>
+                  4. Сохранение
+                </span>
+              </div>
+              <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                  style={{
+                    width: step === 'upload' ? '25%' : 
+                           step === 'extracting' ? '50%' : 
+                           step === 'review' ? '75%' : 
+                           ['saving', 'success'].includes(step) ? '100%' : '0%'
+                  }}
+                />
+              </div>
+            </div>
 
-              {uploadStatus === 'success' ? (
-                <div className="text-center py-8">
-                  <CheckCircle className="mx-auto h-12 w-12 text-green-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">Upload Successful!</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Contract has been processed and saved.
+            {/* Этап загрузки */}
+            {step === 'upload' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Загрузите договор
+                  </h3>
+                  <p className="text-gray-600">
+                    Система автоматически извлечёт все данные из вашего документа
                   </p>
-                  {ocrResult && (
-                    <div className="mt-4 p-4 bg-gray-50 rounded-md text-left">
-                      <h4 className="text-sm font-medium text-gray-900">OCR Results:</h4>
-                      <p className="text-xs text-gray-600 mt-2">
-                        {ocrResult.ocr_text.substring(0, 200)}...
-                      </p>
-                    </div>
-                  )}
                 </div>
-              ) : uploadStatus === 'error' ? (
-                <div className="text-center py-8">
-                  <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">Upload Failed</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Please try again or contact support.
-                  </p>
+
+                <div
+                  className={`flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md transition-colors ${
+                    dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                >
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600">
+                      <label className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500">
+                        <span>Выбрать файл</span>
+                        <input
+                          type="file"
+                          className="sr-only"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={handleFileChange}
+                        />
+                      </label>
+                      <p className="pl-1">или перетащите сюда</p>
+                    </div>
+                    <p className="text-xs text-gray-500">PDF, PNG, JPG до 50MB</p>
+                    {file && (
+                      <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-green-600 mr-2" />
+                          <span className="text-sm font-medium text-green-800">
+                            {file.name}
+                          </span>
+                        </div>
+                        <p className="text-xs text-green-600 mt-1">
+                          Размер: {(file.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
                   <button
-                    onClick={handleTryAgain}
-                    className="mt-4 btn btn-secondary"
+                    type="button"
+                    onClick={handleFileUpload}
+                    disabled={!file}
+                    className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Try Again
+                    Извлечь данные
                   </button>
                 </div>
-              ) : (
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  {/* File Upload */}
-                  <div className="form-group">
-                    <label className="form-label">Contract File</label>
-                    <div
-                      className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md transition-colors ${
-                        dragActive
-                          ? 'border-primary-400 bg-primary-50'
-                          : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                      onDragEnter={handleDrag}
-                      onDragLeave={handleDrag}
-                      onDragOver={handleDrag}
-                      onDrop={handleDrop}
-                    >
-                      <div className="space-y-1 text-center">
-                        <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                        <div className="flex text-sm text-gray-600">
-                          <label className="relative cursor-pointer bg-white rounded-md font-medium text-primary-600 hover:text-primary-500">
-                            <span>Upload a file</span>
-                            <input
-                              type="file"
-                              className="sr-only"
-                              accept=".pdf,.jpg,.jpeg,.png"
-                              onChange={handleFileChange}
-                            />
-                          </label>
-                          <p className="pl-1">or drag and drop</p>
-                        </div>
-                        <p className="text-xs text-gray-500">PDF, PNG, JPG up to 10MB</p>
-                        {file && (
-                          <p className="text-sm text-primary-600 font-medium">
-                            Selected: {file.name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
+              </div>
+            )}
+
+            {/* Этап извлечения */}
+            {step === 'extracting' && (
+              <div className="text-center py-12">
+                <Loader2 className="mx-auto h-16 w-16 text-blue-600 animate-spin mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Обрабатываем {file?.name}
+                </h3>
+                
+                {/* Прогресс-бар */}
+                <div className="max-w-md mx-auto mb-4">
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                      style={{ width: `${progress}%` }}
+                    />
                   </div>
-
-                  {/* Form Fields */}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="form-group">
-                      <label className="form-label">Contract Number *</label>
-                      <input
-                        type="text"
-                        className="input"
-                        {...register('number')}
-                      />
-                      {errors.number && (
-                        <p className="form-error">{errors.number.message}</p>
-                      )}
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Contract Date *</label>
-                      <input
-                        type="date"
-                        className="input"
-                        {...register('contract_date')}
-                      />
-                      {errors.contract_date && (
-                        <p className="form-error">{errors.contract_date.message}</p>
-                      )}
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Customer Name *</label>
-                      <input
-                        type="text"
-                        className="input"
-                        {...register('customer_name')}
-                      />
-                      {errors.customer_name && (
-                        <p className="form-error">{errors.customer_name.message}</p>
-                      )}
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Contractor Name *</label>
-                      <input
-                        type="text"
-                        className="input"
-                        {...register('contractor_name')}
-                      />
-                      {errors.contractor_name && (
-                        <p className="form-error">{errors.contractor_name.message}</p>
-                      )}
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Amount</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="input"
-                        {...register('amount')}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Deadline</label>
-                      <input
-                        type="date"
-                        className="input"
-                        {...register('deadline')}
-                      />
-                    </div>
+                  <div className="flex justify-between text-sm text-gray-600 mt-2">
+                    <span>{progress}%</span>
+                    <span>Прогресс</span>
                   </div>
+                </div>
+                
+                {/* Статус сообщение */}
+                <p className="text-gray-600 mb-4">
+                  {jobStatus?.message || 'Подготовка к обработке...'}
+                </p>
+                
+                {/* Подсказка о времени */}
+                <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+                  <Clock className="h-4 w-4" />
+                  <span>Обработка может занять несколько минут</span>
+                </div>
+                
+                {/* Кнопка отмены */}
+                <button
+                  onClick={() => {
+                    if (jobId) {
+                      contractsAPI.cancelJob(jobId).then(() => {
+                        handleClose();
+                      }).catch(console.error);
+                    } else {
+                      handleClose();
+                    }
+                  }}
+                  className="mt-6 btn btn-secondary"
+                >
+                  Отменить
+                </button>
+              </div>
+            )}
 
+            {/* Этап проверки */}
+            {step === 'review' && extractedData && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Проверьте извлечённые данные
+                  </h3>
+                  <div className="flex items-center space-x-4 text-sm text-gray-600">
+                    <span>Извлечено полей: {extractedData.extraction_stats?.fields_extracted || 0}</span>
+                    <span>Длина текста: {extractedData.extraction_stats?.text_length || 0} символов</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="form-group">
-                    <label className="form-label">Subject</label>
+                    <label className="form-label">Номер договора</label>
                     <input
                       type="text"
                       className="input"
-                      {...register('subject')}
+                      value={editedData.number || ''}
+                      onChange={(e) => updateField('number', e.target.value)}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Penalties</label>
-                    <textarea
+                    <label className="form-label">Дата договора</label>
+                    <input
+                      type="date"
                       className="input"
-                      rows={3}
-                      {...register('penalties')}
+                      value={editedData.contract_date || ''}
+                      onChange={(e) => updateField('contract_date', e.target.value)}
                     />
                   </div>
 
-                  {/* Extended Fields */}
-                  <div className="border-t pt-4">
-                    <h4 className="text-md font-medium text-gray-900 mb-4">Additional Details</h4>
-                    
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="form-group">
-                        <label className="form-label">Contract Type</label>
-                        <select className="input" {...register('contract_type')}>
-                          <option value="">Select type</option>
-                          <option value="подряда">Construction Contract</option>
-                          <option value="поставки">Supply Contract</option>
-                          <option value="услуг">Service Contract</option>
-                          <option value="аренды">Lease Contract</option>
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">Construction Permit</label>
-                        <input
-                          type="text"
-                          className="input"
-                          placeholder="e.g., №63-301000-130-2021"
-                          {...register('construction_permit')}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">Cadastral Number</label>
-                        <input
-                          type="text"
-                          className="input"
-                          placeholder="e.g., 63:01:0637003:94"
-                          {...register('cadastral_number')}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">VAT Rate (%)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          className="input"
-                          placeholder="e.g., 20"
-                          {...register('vat_rate')}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">Amount Including VAT</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="input"
-                          {...register('amount_including_vat')}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label">Warranty Period (months)</label>
-                        <input
-                          type="number"
-                          className="input"
-                          placeholder="e.g., 60"
-                          {...register('warranty_period_months')}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Work Object Name</label>
-                      <input
-                        type="text"
-                        className="input"
-                        placeholder="Description of construction object"
-                        {...register('work_object_name')}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Work Object Address</label>
-                      <input
-                        type="text"
-                        className="input"
-                        placeholder="Address of construction site"
-                        {...register('work_object_address')}
-                      />
-                    </div>
+                  <div className="form-group">
+                    <label className="form-label">Заказчик</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={editedData.customer_name || ''}
+                      onChange={(e) => updateField('customer_name', e.target.value)}
+                    />
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex justify-end space-x-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={handleClose}
-                      className="btn btn-secondary"
-                      disabled={uploadStatus === 'uploading'}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={uploadStatus === 'uploading' || !file}
-                    >
-                      {uploadStatus === 'uploading' ? (
-                        <div className="flex items-center">
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Uploading...
-                        </div>
-                      ) : (
-                        'Upload Contract'
-                      )}
-                    </button>
+                  <div className="form-group">
+                    <label className="form-label">Подрядчик</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={editedData.contractor_name || ''}
+                      onChange={(e) => updateField('contractor_name', e.target.value)}
+                    />
                   </div>
-                </form>
-              )}
-            </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Сумма (с НДС)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input"
+                      value={editedData.amount_including_vat || ''}
+                      onChange={(e) => updateField('amount_including_vat', e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Кадастровый номер</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={editedData.cadastral_number || ''}
+                      onChange={(e) => updateField('cadastral_number', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-between pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setStep('upload')}
+                    className="btn btn-secondary"
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="btn btn-primary"
+                  >
+                    Сохранить договор
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Этап сохранения */}
+            {step === 'saving' && (
+              <div className="text-center py-12">
+                <Loader2 className="mx-auto h-16 w-16 text-green-600 animate-spin mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Сохраняем договор...
+                </h3>
+                <p className="text-gray-600">Пожалуйста, подождите</p>
+              </div>
+            )}
+
+            {/* Этап успеха */}
+            {step === 'success' && (
+              <div className="text-center py-12">
+                <CheckCircle className="mx-auto h-16 w-16 text-green-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Договор успешно сохранён!
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Все данные были автоматически извлечены и сохранены
+                </p>
+              </div>
+            )}
+
+            {/* Этап ошибки */}
+            {step === 'error' && (
+              <div className="text-center py-12">
+                <AlertCircle className="mx-auto h-16 w-16 text-red-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Ошибка обработки
+                </h3>
+                <div className="max-w-md mx-auto">
+                  <p className="text-gray-600 mb-6 text-sm leading-relaxed">
+                    {errorMessage}
+                  </p>
+                  
+                  {/* Подсказки по решению проблем */}
+                  {errorMessage.includes('Gateway Time-out') && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-left">
+                      <h4 className="font-medium text-yellow-800 mb-2">Рекомендации:</h4>
+                      <ul className="text-sm text-yellow-700 space-y-1">
+                        <li>• Попробуйте уменьшить размер файла</li>
+                        <li>• Убедитесь, что документ читаемый</li>
+                        <li>• Попробуйте повторить позже</li>
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {errorMessage.includes('OCR') && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
+                      <h4 className="font-medium text-blue-800 mb-2">Проблема с распознаванием текста:</h4>
+                      <ul className="text-sm text-blue-700 space-y-1">
+                        <li>• Проверьте качество скана</li>
+                        <li>• Используйте формат PDF вместо изображения</li>
+                        <li>• Убедитесь, что текст чёткий</li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex justify-center space-x-4">
+                  <button
+                    onClick={handleRetry}
+                    className="btn btn-secondary"
+                  >
+                    Выбрать другой файл
+                  </button>
+                  <button
+                    onClick={handleRetry}
+                    className="btn btn-primary"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

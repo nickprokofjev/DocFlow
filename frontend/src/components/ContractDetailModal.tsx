@@ -133,7 +133,10 @@ export function ContractDetailModal({ contract, onClose }: ContractDetailModalPr
                         <div>
                           <span className="text-sm text-gray-500">Amount:</span>
                           <span className="ml-2 text-sm font-medium">
-                            {formatCurrency(contract.amount_including_vat || contract.amount, contract.currency)}
+                            {formatCurrency(
+                              (contract.amount_including_vat || contract.amount) || 0, 
+                              contract.currency
+                            )}
                           </span>
                           {contract.amount_including_vat && contract.vat_rate && (
                             <span className="ml-1 text-xs text-gray-500">(VAT {contract.vat_rate}%)</span>

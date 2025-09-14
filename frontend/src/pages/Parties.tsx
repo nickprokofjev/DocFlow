@@ -44,7 +44,7 @@ export function Parties() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: partiesAPI.delete,
+    mutationFn: (id: number) => partiesAPI.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parties'] });
     },
@@ -214,7 +214,7 @@ export function Parties() {
       {showCreateModal && (
         <CreatePartyModal
           onClose={() => setShowCreateModal(false)}
-          onSave={(data) => createMutation.mutate(data)}
+          onSave={(data: CreatePartyRequest) => createMutation.mutate(data)}
           isLoading={createMutation.isPending}
         />
       )}

@@ -15,11 +15,12 @@ import {
 } from 'lucide-react';
 import { ContractUploadModal } from '@/components/ContractUploadModal';
 import { ContractDetailModal } from '@/components/ContractDetailModal';
+import type { ContractWithParties } from '@/types';
 
 export function Contracts() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedContract, setSelectedContract] = useState<any>(null);
+  const [selectedContract, setSelectedContract] = useState<ContractWithParties | null>(null);
   
   const queryClient = useQueryClient();
 
@@ -31,7 +32,7 @@ export function Contracts() {
   // Mutation for deleting contracts
   // Мутация для удаления контрактов
   const deleteMutation = useMutation({
-    mutationFn: contractsAPI.delete,
+    mutationFn: (id: number) => contractsAPI.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
     },

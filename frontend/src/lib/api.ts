@@ -1,232 +1,179 @@
-/**
- * API utilities for DocFlow frontend application.
- * 
- * This module provides:
- * - HTTP client configuration with interceptors
- * - Authentication token management
- * - API endpoints for contracts, parties, and documents
- * - Error handling and response transformation
- * - Request/response interceptors for logging and token management
- */
+import axios, { AxiosResponse } from 'axios';
+import type { User } from '@/types';
 
-import { 
-  Contract, 
-  ContractWithParties, 
-  Party, 
-  User, 
-  UploadContractRequest,
-  CreatePartyRequest,
-  APIResponse,
-  PaginatedResponse 
-} from '@/types';
+// Base API configuration
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-// Base API URL - will be resolved by Vite proxy in development
-const API_BASE_URL = '/api/v1';
-const AUTH_BASE_URL = '/auth';
+// Create axios instance
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
-// Helper function to get auth headers
-function getAuthHeaders(): Record<string, string> {
+// Request interceptor to add auth token
+api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
-}
-
-// Generic fetch wrapper with error handling
-async function apiRequest<T>(
-  url: string, 
-  options: RequestInit = {}
-): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...options.headers,
-    },
-    ...options,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new Error(errorData?.message || `HTTP ${response.status}: ${response.statusText}`);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
+  return config;
+});
 
-  return response.json();
-}
-
-// File upload wrapper
-async function uploadRequest<T>(
-  url: string,
-  formData: FormData
-): Promise<T> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      ...getAuthHeaders(),
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new Error(errorData?.message || `HTTP ${response.status}: ${response.statusText}`);
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
   }
+);
 
-  return response.json();
-}
-
-// Authentication API
+// Auth API
 export const authAPI = {
-  login: async (credentials: { username: string; password: string }): Promise<{ access_token: string; user: User }> => {
+  login: async (credentials: { username: string; password: string }) => {
     const formData = new FormData();
     formData.append('username', credentials.username);
     formData.append('password', credentials.password);
     
-    const response = await fetch(`${AUTH_BASE_URL}/login`, {
-      method: 'POST',
-      body: formData,
+    const response: AxiosResponse<{
+      access_token: string;
+      token_type: string;
+      user: User;
+    }> = await api.post('/auth/login', formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
     });
     
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(errorData?.message || 'Login failed');
-    }
-    
-    return response.json();
+    return response.data;
+  },
+
+  register: async (userData: {
+    email: string;
+    username: string;
+    password: string;
+  }) => {
+    const response: AxiosResponse<User> = await api.post('/auth/register', userData);
+    return response.data;
   },
 
   getCurrentUser: async (): Promise<User> => {
-    return apiRequest(`${AUTH_BASE_URL}/me`);
+    const response: AxiosResponse<User> = await api.get('/auth/me');
+    return response.data;
   },
 
-  register: async (userData: { email: string; username: string; password: string }): Promise<User> => {
-    return apiRequest(`${AUTH_BASE_URL}/register`, {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-  },
-
-  logout: async (): Promise<void> => {
-    await apiRequest(`${AUTH_BASE_URL}/logout`, {
-      method: 'POST',
-    });
+  logout: async () => {
+    await api.post('/auth/logout');
   },
 };
 
 // Contracts API
 export const contractsAPI = {
-  getAll: async (params?: { limit?: number; offset?: number }): Promise<ContractWithParties[]> => {
-    const queryString = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-    return apiRequest(`${API_BASE_URL}/contracts/${queryString}`);
+  getAll: async (params?: { limit?: number }) => {
+    const response = await api.get('/api/contracts', { params });
+    return response.data;
   },
 
-  getAllPaginated: async (params?: { limit?: number; offset?: number }): Promise<PaginatedResponse<ContractWithParties>> => {
-    const queryString = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-    const response = await apiRequest<ContractWithParties[]>(`${API_BASE_URL}/contracts/${queryString}`);
-    // For now, create a mock paginated response since backend doesn't return pagination metadata
-    // TODO: Update backend to return proper pagination metadata
-    return {
-      items: response,
-      total: response.length,
-      page: Math.floor((params?.offset || 0) / (params?.limit || 100)) + 1,
-      size: params?.limit || 100,
-      pages: Math.ceil(response.length / (params?.limit || 100))
-    };
+  getById: async (id: number) => {
+    const response = await api.get(`/api/contracts/${id}`);
+    return response.data;
   },
 
-  getById: async (id: number): Promise<ContractWithParties> => {
-    return apiRequest(`${API_BASE_URL}/contracts/${id}`);
+  create: async (contractData: any) => {
+    const response = await api.post('/api/contracts', contractData);
+    return response.data;
   },
 
-  upload: async (contractData: UploadContractRequest): Promise<APIResponse<Contract>> => {
+  update: async (id: number, contractData: any) => {
+    const response = await api.put(`/api/contracts/${id}`, contractData);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    await api.delete(`/api/contracts/${id}`);
+  },
+
+  uploadDocument: async (contractId: number, file: File) => {
     const formData = new FormData();
+    formData.append('file', file);
     
-    // Add all contract fields to FormData
-    Object.entries(contractData).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && key !== 'file') {
-        formData.append(key, value.toString());
-      }
+    const response = await api.post(`/api/contracts/${contractId}/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
     
-    if (contractData.file) {
-      formData.append('file', contractData.file);
-    }
-    
-    return uploadRequest(`${API_BASE_URL}/contracts/`, formData);
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await apiRequest(`${API_BASE_URL}/contracts/${id}`, {
-      method: 'DELETE',
-    });
-  },
-
-  update: async (id: number, contractData: Partial<Contract>): Promise<Contract> => {
-    return apiRequest(`${API_BASE_URL}/contracts/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(contractData),
-    });
+    return response.data;
   },
 };
 
 // Parties API
 export const partiesAPI = {
-  getAll: async (params?: { limit?: number; offset?: number; role?: string }): Promise<Party[]> => {
-    const queryString = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-    return apiRequest(`${API_BASE_URL}/parties/${queryString}`);
+  getAll: async (params?: { limit?: number }) => {
+    const response = await api.get('/api/parties', { params });
+    return response.data;
   },
 
-  getAllPaginated: async (params?: { limit?: number; offset?: number }): Promise<PaginatedResponse<Party>> => {
-    const queryString = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-    const response = await apiRequest<Party[]>(`${API_BASE_URL}/parties/${queryString}`);
-    // For now, create a mock paginated response since backend doesn't return pagination metadata
-    // TODO: Update backend to return proper pagination metadata
-    return {
-      items: response,
-      total: response.length,
-      page: Math.floor((params?.offset || 0) / (params?.limit || 100)) + 1,
-      size: params?.limit || 100,
-      pages: Math.ceil(response.length / (params?.limit || 100))
-    };
+  getById: async (id: number) => {
+    const response = await api.get(`/api/parties/${id}`);
+    return response.data;
   },
 
-  getById: async (id: number): Promise<Party> => {
-    return apiRequest(`${API_BASE_URL}/parties/${id}`);
+  create: async (partyData: any) => {
+    const response = await api.post('/api/parties', partyData);
+    return response.data;
   },
 
-  create: async (partyData: CreatePartyRequest): Promise<Party> => {
-    return apiRequest(`${API_BASE_URL}/parties/`, {
-      method: 'POST',
-      body: JSON.stringify(partyData),
-    });
+  update: async (id: number, partyData: any) => {
+    const response = await api.put(`/api/parties/${id}`, partyData);
+    return response.data;
   },
 
-  update: async (id: number, partyData: Partial<Party>): Promise<Party> => {
-    return apiRequest(`${API_BASE_URL}/parties/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(partyData),
-    });
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await apiRequest(`${API_BASE_URL}/parties/${id}`, {
-      method: 'DELETE',
-    });
-  },
-};
-
-// Health API
-export const healthAPI = {
-  check: async (): Promise<{ status: string; timestamp: string }> => {
-    return apiRequest('/health');
+  delete: async (id: number) => {
+    await api.delete(`/api/parties/${id}`);
   },
 };
 
 // Documents API
 export const documentsAPI = {
-  getAll: async (): Promise<any[]> => {
-    return apiRequest(`${API_BASE_URL}/documents/`);
+  getAll: async () => {
+    const response = await api.get('/api/documents');
+    return response.data;
   },
 
-  getByContractId: async (contractId: number): Promise<any[]> => {
-    return apiRequest(`${API_BASE_URL}/contracts/${contractId}/documents`);
+  getById: async (id: number) => {
+    const response = await api.get(`/api/documents/${id}`);
+    return response.data;
   },
 };
+
+// Dashboard API
+export const dashboardAPI = {
+  getStats: async () => {
+    const response = await api.get('/api/dashboard/stats');
+    return response.data;
+  },
+
+  getRecentActivity: async () => {
+    const response = await api.get('/api/dashboard/recent');
+    return response.data;
+  },
+};
+
+// Health API
+export const healthAPI = {
+  check: async () => {
+    const response = await api.get('/health');
+    return response.data;
+  },
+};
+
+export { api };
+export default api;
