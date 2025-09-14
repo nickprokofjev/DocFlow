@@ -154,13 +154,14 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-def create_default_user(db: AsyncSession) -> User:
+def create_default_user() -> User:
     """Create default admin user if none exists."""
     hashed_password = get_password_hash("admin123")
     user = User(
         email="admin@example.com",
         username="admin",
         hashed_password=hashed_password,
-        is_superuser=True
+        is_superuser=True,
+        is_active=True
     )
     return user

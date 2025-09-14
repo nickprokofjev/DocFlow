@@ -58,7 +58,7 @@ async def init_database():
             existing_users = result.scalars().all()
             
             if not existing_users:
-                default_user = create_default_user(session)
+                default_user = create_default_user()
                 session.add(default_user)
                 await session.commit()
                 logger.info("Default admin user created: admin@example.com / admin123")

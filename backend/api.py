@@ -36,6 +36,129 @@ router = APIRouter()
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+@router.post("/contracts/extract")
+async def extract_contract_data(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Запускает асинхронную обработку файла договора с помощью OCR/NLP.
+    Возвращает ID задачи для отслеживания прогресса.
+    """
+    from task_queue import task_queue
+    
+    logger.info(f"Начало обработки файла: {file.filename}")
+    
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Ошибка: имя файла не указано")
+    
+    # Проверяем размер файла (50MB)
+    max_size = 50 * 1024 * 1024  # 50MB
+    if file.size and file.size > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Файл слишком большой. Максимальный размер: {max_size // 1024 // 1024}MB"
+        )
+    
+    # Проверяем тип файла
+    allowed_extensions = ['.pdf', '.jpg', '.jpeg', '.png']
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Неподдерживаемый формат файла. Разрешены: {', '.join(allowed_extensions)}"
+        )
+    
+    # Создаём файл
+    file_id = str(uuid4())
+    file_path = os.path.join(UPLOAD_DIR, f"contract_{file_id}{ext}")
+    
+    try:
+        # Сохраняем файл
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+        logger.info(f"Файл сохранён: {file_path}")
+        
+        # Создаём задачу для асинхронной обработки
+        job_id = str(uuid4())
+        await task_queue.submit_job(
+            job_id,
+            task_queue.process_ocr_nlp_task,
+            file_path,
+            file.filename
+        )
+        
+        logger.info(f"Задача {job_id} создана для файла {file.filename}")
+        
+        return APIResponse(
+            success=True,
+            message=f"Обработка файла {file.filename} начата",
+            data={
+                "job_id": job_id,
+                "filename": file.filename,
+                "file_size": file.size,
+                "status": "processing",
+                "message": "Файл загружен и отправлен на обработку. Используйте job_id для отслеживания прогресса."
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка при создании задачи: {e}")
+        # Удаляем файл в случае ошибки
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except:
+            pass
+        
+        return APIResponse(
+            success=False,
+            message=f"Ошибка при обработке файла: {str(e)}",
+            data={"error": str(e)}
+        )
+
+@router.get("/jobs/{job_id}/status")
+async def get_job_status(
+    job_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Получает статус выполнения задачи по её ID.
+    """
+    from task_queue import task_queue
+    
+    job_result = task_queue.get_job_status(job_id)
+    
+    if not job_result:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    
+    return APIResponse(
+        success=True,
+        message="Статус задачи получен",
+        data=job_result.to_dict()
+    )
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Отменяет выполнение задачи.
+    """
+    from task_queue import task_queue
+    
+    cancelled = await task_queue.cancel_job(job_id)
+    
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Задача не найдена или уже завершена")
+    
+    return APIResponse(
+        success=True,
+        message="Задача отменена",
+        data={"job_id": job_id, "status": "cancelled"}
+    )
+
 @router.post("/contracts/")
 async def create_contract(
     number: str = Form(...),

@@ -230,134 +230,369 @@ def extract_contract_entities(text: str) -> Union[Dict[str, Union[List[str], Lis
 
 def extract_detailed_contract_fields(text: str) -> Dict[str, Union[str, List[Dict[str, str]], None]]:
     """
-    Извлекает детальные поля договора из текста с помощью регулярных выражений.
+    Извлекает детальные поля договора из текста с помощью улучшенных регулярных выражений.
+    Учитывает российскую строительную специфику и различные форматы данных.
+    Поддерживает физических лиц, ИП, различные форматы дат и российские строительные термины.
     """
     import re
     from datetime import datetime
     
     result = {}
     
+    # Словарь месяцев для конвертации
+    months_dict = {
+        'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04',
+        'мая': '05', 'июня': '06', 'июля': '07', 'августа': '08',
+        'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12'
+    }
+    
     try:
-        # 1. Номер и дата договора
-        contract_number_pattern = r'ДОГОВОР[\s\w]*№\s*([\w\d\./\-]+)'
-        contract_number_match = re.search(contract_number_pattern, text, re.IGNORECASE)
-        if contract_number_match:
-            result['contract_number'] = contract_number_match.group(1).strip()
+        # 1. Номер и дата договора (расширенные паттерны)
+        contract_number_patterns = [
+            r'ДОГОВОР[\s\w]*№\s*([\w\d\./\-]+)',
+            r'Договор[\s\w]*№\s*([\w\d\./\-]+)',
+            r'КОНТРАКТ[\s\w]*№\s*([\w\d\./\-]+)',
+            r'контракт[\s\w]*№\s*([\w\d\./\-]+)',
+            r'СОГЛАШЕНИЕ[\s\w]*№\s*([\w\d\./\-]+)',
+            r'соглашение[\s\w]*№\s*([\w\d\./\-]+)',
+            r'№\s*([\w\d\./\-]+)\s*от',
+            r'Договор\s+подряда\s*№\s*([\w\d\./\-]+)',
+            r'ДОГОВОР\s+СТРОИТЕЛЬНОГО\s+ПОДРЯДА\s*№\s*([\w\d\./\-]+)'
+        ]
         
-        # Дата договора
-        date_pattern = r'(\d{1,2}[\s«»]*\w+[\s»]*\d{4})\s*г\.?'
-        date_match = re.search(date_pattern, text)
-        if date_match:
-            result['contract_date'] = date_match.group(1).strip()
+        for pattern in contract_number_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                result['contract_number'] = match.group(1).strip()
+                break
         
-        # 2. Место заключения
-        place_pattern = r'г\.\s*([А-Яа-я\-]+)\s*«\d'
-        place_match = re.search(place_pattern, text)
-        if place_match:
-            result['place_of_conclusion'] = place_match.group(1).strip()
+        # Дата договора (расширенные форматы с буквенными месяцами)
+        date_patterns = [
+            # Форматы с буквенными месяцами
+            r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})\s*г?',
+            r'«(\d{1,2})»\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})\s*г?',
+            r'от\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})\s*г?',
+            # Числовые форматы
+            r'(\d{1,2})\.(\d{1,2})\.(\d{4})',  # 25.07.2024
+            r'(\d{1,2})/(\d{1,2})/(\d{4})',   # 25/07/2024
+            r'(\d{4})-(\d{1,2})-(\d{1,2})',   # 2024-07-25
+        ]
         
-        # 3. Стороны договора - Заказчик (улучшенный паттерн)
-        # Ищем полное название компании в начале договора
-        customer_full_pattern = r'(Общество с ограниченной ответственностью\s*«[^»]+»)\s*\([^)]+\)[^,]*,?\s*ИНН\s*(\d+)'
-        customer_full_match = re.search(customer_full_pattern, text)
-        if customer_full_match:
-            result['customer_name'] = customer_full_match.group(1).strip()
-            result['customer_inn'] = customer_full_match.group(2).strip()
+        for pattern in date_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 3 and match.group(2) in months_dict:
+                    # Буквенный месяц - конвертируем
+                    day = match.group(1).zfill(2)
+                    month = months_dict[match.group(2)]
+                    year = match.group(3)
+                    result['contract_date'] = f'{year}-{month}-{day}'
+                elif len(match.groups()) == 3:
+                    # Числовой формат
+                    if '.' in match.group(0):
+                        day, month, year = match.groups()
+                        result['contract_date'] = f'{year}-{month.zfill(2)}-{day.zfill(2)}'
+                    elif '/' in match.group(0):
+                        day, month, year = match.groups()
+                        result['contract_date'] = f'{year}-{month.zfill(2)}-{day.zfill(2)}'
+                    else:  # yyyy-mm-dd format
+                        year, month, day = match.groups()
+                        result['contract_date'] = f'{year}-{month.zfill(2)}-{day.zfill(2)}'
+                else:
+                    result['contract_date'] = match.group(0).strip()
+                break
         
-        # Альтернативный паттерн для заказчика (сокращенное название)
-        if 'customer_name' not in result:
-            customer_alt_pattern = r'(ООО\s*«[^»]+»)[^,]*ИНН\s*(\d+)'
-            customer_alt_match = re.search(customer_alt_pattern, text)
-            if customer_alt_match:
-                result['customer_name'] = customer_alt_match.group(1).strip()
-                result['customer_inn'] = customer_alt_match.group(2).strip()
+        # 2. Место заключения (расширенный список городов)
+        place_patterns = [
+            r'г\.\s*([А-Яа-я\-]+)\s*«\d',
+            r'город\s+([А-Яа-я\-]+)',
+            r'в\s+г\.\s*([А-Яа-я\-]+)',
+            r'([А-Я][а-я]+)\s*«\d{1,2}»'
+        ]
         
-        # Ищем первый ИНН в тексте (скорее всего заказчик)
-        if 'customer_inn' not in result:
-            first_inn_pattern = r'ИНН\s*(\d+)'
-            first_inn_match = re.search(first_inn_pattern, text)
-            if first_inn_match:
-                result['customer_inn'] = first_inn_match.group(1).strip()
+        for pattern in place_patterns:
+            match = re.search(pattern, text)
+            if match:
+                result['place_of_conclusion'] = match.group(1).strip()
+                break
         
-        # 4. Подрядчик (улучшенный паттерн)
-        contractor_pattern = r'(Общество с ограниченной ответственностью\s*«[^»]+»)\s*\([^)]+\)[^,]*именуемое\s+в\s+дальнейшем\s+«Подрядчик»'
-        contractor_match = re.search(contractor_pattern, text)
-        if contractor_match:
-            result['contractor_name'] = contractor_match.group(1).strip()
+        # 3. Стороны договора - Заказчик (расширенные типы организаций и физлиц)
+        customer_patterns = [
+            # Юридические лица - основные формы
+            r'(Общество с ограниченной ответственностью[^)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(ООО[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(Открытое акционерное общество[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(ОАО[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(Закрытое акционерное общество[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(ЗАО[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(Публичное акционерное общество[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(ПАО[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(Акционерное общество[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(АО[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            # МУП, ГУП и другие муниципальные организации
+            r'(Муниципальное унитарное предприятие[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(МУП[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(Государственное унитарное предприятие[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(ГУП[^,)]*)[,\.].*?ИНН[\s:]*(\d+)',
+            # Индивидуальные предприниматели
+            r'(Индивидуальный предприниматель[^,]*[\u0410-\u042f][а-\u044f]+[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'(ИП [\u0410-\u042f][а-\u044f]+[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            # Физические лица
+            r'(гражданин[^,]*)[,\.].*?паспорт',
+            r'([\u0410-\u042f][а-\u044f]+\s+[\u0410-\u042f][а-\u044f]+\s+[\u0410-\u042f][а-\u044f]+)[^,]*паспорт[\s:]*(\d+\s+\d+)',
+        ]
         
-        # Альтернативный паттерн для подрядчика
-        if 'contractor_name' not in result:
-            contractor_alt_pattern = r'(ООО\s*«[^»]+»)[^,]*именуемое\s+в\s+дальнейшем\s+«Подрядчик»'
-            contractor_alt_match = re.search(contractor_alt_pattern, text)
-            if contractor_alt_match:
-                result['contractor_name'] = contractor_alt_match.group(1).strip()
+        for pattern in customer_patterns:
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                result['customer_name'] = match.group(1).strip()
+                if len(match.groups()) > 1 and match.group(2):
+                    if 'паспорт' in pattern:
+                        result['customer_passport'] = match.group(2).strip()
+                        result['customer_type'] = 'физическое лицо'
+                    else:
+                        result['customer_inn'] = match.group(2).strip()
+                        if 'ИП' in match.group(1) or 'Индивидуальный предприниматель' in match.group(1):
+                            result['customer_type'] = 'индивидуальный предприниматель'
+                        else:
+                            result['customer_type'] = 'юридическое лицо'
+                break
         
-        # Еще один паттерн - поиск после слова "стороны"
-        if 'contractor_name' not in result:
-            contractor_alt2_pattern = r'стороны[^,]*,\s*и\s*(ООО\s*«[^»]+»|Общество[^,]+)'
-            contractor_alt2_match = re.search(contractor_alt2_pattern, text, re.IGNORECASE)
-            if contractor_alt2_match:
-                result['contractor_name'] = contractor_alt2_match.group(1).strip()
+        # 4. Подрядчик (расширенные паттерны для всех типов организаций)
+        contractor_patterns = [
+            # После заказчика ищем подрядчика
+            r'и[\s\n]*(Общество[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'и[\s\n]*(ООО[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'и[\s\n]*(ОАО[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'и[\s\n]*(ЗАО[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'и[\s\n]*(ПАО[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'и[\s\n]*(АО[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'и[\s\n]*(Индивидуальный предприниматель[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            r'и[\s\n]*(ИП [\u0410-\u042f][а-\u044f]+[^,]*)[,\.].*?ИНН[\s:]*(\d+)',
+            # Паттерны с "именуемый подрядчик"
+            r'(ООО[^,]*)[^,]*именуемое[^"]*«Подрядчик»',
+            r'(ИП [^,]*)[^,]*именуемый[^"]*«Подрядчик»',
+            r'(Индивидуальный предприниматель[^,]*)[^,]*именуемый[^"]*«Подрядчик»',
+        ]
         
-        # 5. Объект работ (улучшенные паттерны)
-        work_object_pattern = r'на объекте строительства:\s*«([^»]+)»'
-        work_object_match = re.search(work_object_pattern, text)
-        if work_object_match:
-            result['work_object_name'] = work_object_match.group(1).strip()
+        for pattern in contractor_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                result['contractor_name'] = match.group(1).strip()
+                if len(match.groups()) > 1 and match.group(2):
+                    result['contractor_inn'] = match.group(2).strip()
+                
+                if 'ИП' in match.group(1) or 'Индивидуальный предприниматель' in match.group(1):
+                    result['contractor_type'] = 'индивидуальный предприниматель'
+                else:
+                    result['contractor_type'] = 'юридическое лицо'
+                break
         
-        # Альтернативный паттерн для объекта строительства
-        if 'work_object_name' not in result:
-            work_object_alt_pattern = r'(Среднеэтажный жилой дом[^,]+)'
-            work_object_alt_match = re.search(work_object_alt_pattern, text)
-            if work_object_alt_match:
-                result['work_object_name'] = work_object_alt_match.group(1).strip()
+        # 4.1. Сроки выполнения работ (с различными форматами дат)
+        deadline_patterns = [
+            # Периоды с буквенными месяцами
+            r'с\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+по\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})',
+            r'с\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+до\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})',
+            # Периоды с числовыми датами
+            r'с\s+(\d{1,2})\.(\d{1,2})\.(\d{4})\s+по\s+(\d{1,2})\.(\d{1,2})\.(\d{4})',
+            r'с\s+(\d{1,2})\.(\d{1,2})\.(\d{4})\s+до\s+(\d{1,2})\.(\d{1,2})\.(\d{4})',
+            # Общие сроки
+            r'срок\s+выполнения[^:]*:\s*до\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})',
+            r'срок\s+выполнения[^:]*:\s*до\s+(\d{1,2})\.(\d{1,2})\.(\d{4})',
+            r'в\s+течение\s+(\d+)\s*(месяцев|месяца|мес)',
+            r'в\s+течение\s+(\d+)\s*(календарных\s+дней|дней|дня)',
+        ]
         
-        # Адрес объекта
-        address_pattern = r'расположенный по адресу:\s*([^,]+)'
-        address_match = re.search(address_pattern, text)
-        if address_match:
-            result['work_object_address'] = address_match.group(1).strip()
+        for pattern in deadline_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if len(match.groups()) >= 5:  # Период с начальной и конечной датами
+                    if match.group(2) in months_dict:  # Буквенные месяцы
+                        start_day = match.group(1).zfill(2)
+                        start_month = months_dict[match.group(2)]
+                        end_day = match.group(3).zfill(2)
+                        end_month = months_dict[match.group(4)]
+                        year = match.group(5)
+                        result['work_start_date'] = f'{year}-{start_month}-{start_day}'
+                        result['deadline'] = f'{year}-{end_month}-{end_day}'
+                    else:  # Числовые даты
+                        start_day, start_month, start_year = match.group(1), match.group(2), match.group(3)
+                        end_day, end_month, end_year = match.group(4), match.group(5), match.group(6)
+                        result['work_start_date'] = f'{start_year}-{start_month.zfill(2)}-{start_day.zfill(2)}'
+                        result['deadline'] = f'{end_year}-{end_month.zfill(2)}-{end_day.zfill(2)}'
+                elif len(match.groups()) == 3:  # Одна дата срока
+                    if match.group(2) in months_dict:
+                        day = match.group(1).zfill(2)
+                        month = months_dict[match.group(2)]
+                        year = match.group(3)
+                        result['deadline'] = f'{year}-{month}-{day}'
+                    else:
+                        day, month, year = match.group(1), match.group(2), match.group(3)
+                        result['deadline'] = f'{year}-{month.zfill(2)}-{day.zfill(2)}'
+                elif len(match.groups()) == 2:  # Период в месяцах/днях
+                    duration = match.group(1)
+                    unit = match.group(2)
+                    if 'мес' in unit:
+                        result['work_duration_months'] = duration
+                    elif 'дн' in unit:
+                        result['work_duration_days'] = duration
+                break
         
-        # Кадастровый номер (улучшенный паттерн)
-        cadastral_pattern = r'кадастровым номером\s+([\d:]+)'
-        cadastral_match = re.search(cadastral_pattern, text)
-        if cadastral_match:
-            result['cadastral_number'] = cadastral_match.group(1).strip()
+        # 5. Объект работ (российская строительная специфика)
+        work_object_patterns = [
+            # Типы строительных объектов
+            r'на объекте строительства:\s*«([^»]+)»',
+            r'по адресу объекта:\s*([^,]+)',
+            r'(Многоквартирный жилой дом[^,.]+)',
+            r'(Среднеэтажный жилой дом[^,.]+)',
+            r'(Малоэтажный жилой дом[^,.]+)',
+            r'(Высотный жилой дом[^,.]+)',
+            r'(Жилой комплекс[^,.]+)',
+            r'(Торговый центр[^,.]+)',
+            r'(Офисное здание[^,.]+)',
+            r'(Административное здание[^,.]+)',
+            r'(Производственное здание[^,.]+)',
+            r'(Складское здание[^,.]+)',
+            r'(Логистический центр[^,.]+)',
+            r'(Подземная парковка[^,.]+)',
+            r'(Многоуровневая парковка[^,.]+)',
+            r'(Объект капитального строительства[^,.]+)',
+            r'(Объект социальной инфраструктуры[^,.]+)',
+            r'строительство\s+([^,.]+)',
+            r'возведение\s+([^,.]+)',
+            r'реконструкция\s+([^,.]+)',
+            r'капитальный ремонт\s+([^,.]+)',
+        ]
         
-        # Альтернативный паттерн для кадастрового номера
-        if 'cadastral_number' not in result:
-            cadastral_alt_pattern = r'(\d{2}:\d{2}:\d{7}:\d+)'
-            cadastral_alt_match = re.search(cadastral_alt_pattern, text)
-            if cadastral_alt_match:
-                result['cadastral_number'] = cadastral_alt_match.group(1).strip()
+        for pattern in work_object_patterns:
+            match = re.search(pattern, text)
+            if match:
+                result['work_object_name'] = match.group(1).strip()
+                # Определяем тип строительства
+                if 'Многоквартирный' in match.group(1):
+                    result['building_type'] = 'Многоквартирный дом'
+                elif 'жилой' in match.group(1).lower():
+                    result['building_type'] = 'Жилое строительство'
+                elif 'торгов' in match.group(1).lower():
+                    result['building_type'] = 'Коммерческая недвижимость'
+                elif 'офис' in match.group(1).lower():
+                    result['building_type'] = 'Офисная недвижимость'
+                elif 'производств' in match.group(1).lower():
+                    result['building_type'] = 'Промышленная недвижимость'
+                elif 'парковк' in match.group(1).lower():
+                    result['building_type'] = 'Паркинг'
+                break
         
-        # Площадь участка
-        area_pattern = r'площадью\s+(\d+\s*\d*)\s*кв\.м'
-        area_match = re.search(area_pattern, text)
-        if area_match:
-            result['land_area'] = area_match.group(1).replace(' ', '')
+        # 5.1. Адрес объекта (расширенные паттерны для российских адресов)
+        address_patterns = [
+            r'расположенный по адресу:\s*([^,.]+)',
+            r'по адресу:\s*([^,.]+)',
+            r'адрес объекта:\s*([^,.]+)',
+            r'местоположение:\s*([^,.]+)',
+            # Полные адреса с различными сокращениями
+            r'г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*ул\. ?([^,дкс]+),?\s*д\. ?(\d+[\u0430-\u044f]?)',
+            r'г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*пр-т\s+([^,дкс]+),?\s*д\. ?(\d+[\u0430-\u044f]?)',
+            r'г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*пр\. ?([^,дкс]+),?\s*д\. ?(\d+[\u0430-\u044f]?)',
+            r'г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*наб\. ?([^,дкс]+),?\s*д\. ?(\d+[\u0430-\u044f]?)',
+            r'г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*шоссе\s+([^,дкс]+),?\s*д\. ?(\d+[\u0430-\u044f]?)',
+            r'г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*пер\. ?([^,дкс]+),?\s*д\. ?(\d+[\u0430-\u044f]?)',
+            # Адреса с районами и областями
+            r'([\u0410-\u042f][\u0430-\u044f\-]+ область),?\s*г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*([^,]+)',
+            r'г\. ?([\u0410-\u042f][\u0430-\u044f\-]+),?\s*([\u0410-\u042f][\u0430-\u044f\-]+ район),?\s*([^,]+)',
+            # Московские адреса с округами
+            r'г\. Москва,?\s*([\u0410-\u042f\u041e]+ округ),?\s*([^,]+)',
+            r'Москва,?\s*([^,]+ул\.|[^,]+пр\.|[^,]+пр-т)[^,]*',
+            # Общий паттерн
+            r'г\.\s*([\u0410-\u042f][\u0430-\u044f]+)[^,]*ул\.\s*([^,]+)',
+        ]
         
-        # Разрешение на строительство (улучшенный паттерн)
-        permit_pattern = r'разрешение на строительство\s*№([^\s]+)\s*от\s*([\d\.]+)'
-        permit_match = re.search(permit_pattern, text)
-        if permit_match:
-            result['construction_permit'] = permit_match.group(1).strip()
-            result['permit_date'] = permit_match.group(2).strip()
+        for pattern in address_patterns:
+            match = re.search(pattern, text)
+            if match:
+                if len(match.groups()) >= 3:  # Полный адрес
+                    result['work_object_address'] = f'г. {match.group(1)}, {match.group(2)}, д. {match.group(3)}'
+                elif len(match.groups()) == 2:
+                    result['work_object_address'] = f'{match.group(1)}, {match.group(2)}'
+                else:
+                    result['work_object_address'] = match.group(1).strip()
+                break
         
-        # Альтернативный паттерн для разрешения
-        if 'construction_permit' not in result:
-            permit_alt_pattern = r'(№?\d+-\d+-\d+-\d+)\s*от\s*([\d\.]+)'
-            permit_alt_match = re.search(permit_alt_pattern, text)
-            if permit_alt_match:
-                result['construction_permit'] = permit_alt_match.group(1).strip().replace('№', '')
-                result['permit_date'] = permit_alt_match.group(2).strip()
+        # 6. Кадастровый номер (российские стандарты)
+        cadastral_patterns = [
+            r'кадастровым номером\s+([\d:]+)',
+            r'кадастровый номер\s+([\d:]+)',
+            r'кад\. ?№\s*([\d:]+)',
+            r'к\.н\.\s*([\d:]+)',
+            # Стандартные российские форматы
+            r'(\d{2}:\d{2}:\d{6,7}:\d+)',  # Основной формат
+            r'(\d{2}:\d{2}:\d{6,7}:\d+:\d+)',  # Полный формат
+            r'кад\. ?номер\s*([\d:]+)',
+            r'№ кад\. ([\d:]+)',
+        ]
         
-        # Еще один паттерн для разрешения (более простой)
-        if 'construction_permit' not in result:
-            permit_simple_pattern = r'(63-301000-130-2021)'
-            permit_simple_match = re.search(permit_simple_pattern, text)
-            if permit_simple_match:
-                result['construction_permit'] = permit_simple_match.group(1).strip()
+        for pattern in cadastral_patterns:
+            match = re.search(pattern, text)
+            if match:
+                result['cadastral_number'] = match.group(1).strip()
+                break
+        
+        # 7. Площадь участка и здания
+        # 9. Площадь участка и здания (российские единицы измерения)
+        area_patterns = [
+            r'Площадь земельного участка[:\s]+(\d+[\s,]*\d*)\s*кв\.?м',
+            r'площадь участка[:\s]+(\d+[\s,]*\d*)\s*кв\.?м',
+            r'Общая площадь здания[:\s]+(\d+[\s,]*\d*)\s*кв\.?м',
+            r'общая площадь[:\s]+(\d+[\s,]*\d*)\s*кв\.?м',
+            r'площадь застройки[:\s]+(\d+[\s,]*\d*)\s*кв\.?м',
+            r'площадью[:\s]+(\d+[\s,]*\d*)\s*кв\.?м',
+            r'с площадью[:\s]+(\d+[\s,]*\d*)\s*кв\.?м',
+        ]
+        
+        for pattern in area_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                area_value = match.group(1).replace(' ', '').replace(',', '.')
+                if 'земельного участка' in match.group(0).lower() or 'участка' in match.group(0).lower():
+                    result['land_area'] = area_value
+                elif 'здания' in match.group(0).lower() or 'общая площадь' in match.group(0).lower():
+                    result['building_area'] = area_value
+                break
+        
+        # 8. Разрешение на строительство (российская специфика с различными форматами)
+        permit_patterns = [
+            # Основные паттерны для разрешения
+            r'разрешение на строительство\s*№ ?([^\s]+)\s*от\s+([\d\.\sянваряфеврлмартпелиюнявгустснябокьдек]+)',
+            r'Разрешение\s*№ ?([^\s]+)\s*от\s+([\d\.\sянваряфеврлмартпелиюнявгустснябокьдек]+)',
+            r'По разрешению\s*№ ?([^\s]+)\s*от\s+([\d\.\sянваряфеврлмартпелиюнявгустснябокьдек]+)',
+            # Короткие форматы
+            r'№ ?([\d\-РМО]+)\s*от\s+([\d\.\sянваряфеврлмартпелиюнявгустснябокьдек]+)\s*г',
+            r'разрешение\s*№ ?([^\sот]+)',
+            r'на основании разрешения\s*№ ?([^\s]+)',
+            # Типичные российские форматы разрешений
+            r'(\d{2}-\d{3}-\d{2,3}-\d{4})',  # Общий формат
+            r'(\d{2}\.\d{2}\.\d{4}\.\d{4,6})',  # Альтернативный формат
+            r'(РМО-\d{2}-\d{6})',  # Московский формат
+            r'(\d{2}/\d{4}/\d{4})',  # Еще одна вариация
+        ]
+        
+        for pattern in permit_patterns:
+            match = re.search(pattern, text)
+            if match:
+                result['construction_permit'] = match.group(1).strip().replace('№', '')
+                if len(match.groups()) > 1:
+                    permit_date_str = match.group(2).strip()
+                    # Пробуем конвертировать дату с буквенным месяцем
+                    for month_word, month_num in months_dict.items():
+                        if month_word in permit_date_str:
+                            parts = permit_date_str.split()
+                            if len(parts) >= 3:
+                                day = parts[0].zfill(2)
+                                year = parts[2]
+                                result['permit_date'] = f'{year}-{month_num}-{day}'
+                            break
+                    else:
+                        result['permit_date'] = permit_date_str
+                break
         
         # 6. Финансовые условия
         # Общая стоимость (улучшенный паттерн)

@@ -44,6 +44,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Configure file upload limits
+app.state.upload_max_size = 50 * 1024 * 1024  # 50MB
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -61,6 +64,17 @@ app.add_exception_handler(ValidationError, validation_exception_handler)
 # Include API routers
 app.include_router(auth_router)  # No prefix for auth routes
 app.include_router(router, prefix="/api/v1")
+
+# Initialize background task cleanup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize background services on startup."""
+    import asyncio
+    from task_queue import start_background_cleanup
+    
+    # Start background cleanup task
+    asyncio.create_task(start_background_cleanup())
+    logger.info("Background task cleanup initialized")
 
 @app.get("/")
 def root():

@@ -56,7 +56,11 @@ def main():
             port=8000, 
             reload=True,
             reload_dirs=["./"],
-            log_level="info"
+            log_level="info",
+            # Increase limits for file uploads
+            limit_max_requests=1000,
+            limit_concurrency=1000,
+            timeout_keep_alive=30
         )
     except KeyboardInterrupt:
         logger.info("Server stopped by user.")
