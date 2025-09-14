@@ -47,20 +47,20 @@ async def create_contract(
     customer_name: str = Form(...),
     contractor_name: str = Form(...),
     file: UploadFile = File(...),
+    # Новые поля
+    contract_type: str = Form(None),
+    work_object_name: str = Form(None),
+    cadastral_number: str = Form(None),
+    construction_permit: str = Form(None),
+    amount_including_vat: float = Form(None),
+    vat_rate: float = Form(None),
+    warranty_period_months: int = Form(None),
+    status: str = Form('active'),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Загружает договор, сохраняет файл, извлекает текст и сущности, сохраняет данные в БД.
-    
-    Основной эндпоинт для загрузки договоров с полной обработкой:
-    1. Сохраняет загруженный файл на диск
-    2. Создает стороны договора (заказчик/подрядчик)
-    3. Создает запись договора с основными реквизитами
-    4. Обрабатывает файл через OCR (распознавание текста)
-    5. Анализирует текст через NLP (извлечение сущностей)
-    
-    Возвращает ID договора, путь к файлу, извлечённый текст и сущности.
+    Загружает договор с расширенными полями.
     """
     logger.info("Начало загрузки договора: %s", number)
     # Сохраняем файл
@@ -83,54 +83,41 @@ async def create_contract(
     contractor = Party(name=contractor_name, role="contractor")
     db.add_all([customer, contractor])
     await db.flush()
-    logger.info("Стороны добавлены: заказчик=%s, подрядчик=%s", customer_name, contractor_name)
 
-    # Создаём договор
+    # Создаём договор с новыми полями
     contract = Contract(
-        number=number,
-        date=contract_date,
-        subject=subject,
-        amount=amount,
-        deadline=deadline,
-        penalties=penalties,
-        customer_id=customer.id,
-        contractor_id=contractor.id
+        number=number, date=contract_date, subject=subject, amount=amount,
+        deadline=deadline, penalties=penalties, customer_id=customer.id,
+        contractor_id=contractor.id, contract_type=contract_type,
+        work_object_name=work_object_name, cadastral_number=cadastral_number,
+        construction_permit=construction_permit, amount_including_vat=amount_including_vat,
+        vat_rate=vat_rate, warranty_period_months=warranty_period_months,
+        status=status, created_by_user_id=current_user.id
     )
     db.add(contract)
     await db.flush()
-    logger.info("Договор добавлен: id=%s", contract.id)
 
     # Документ
     doc = ContractDocument(
-        contract_id=contract.id,
-        doc_type="contract",
-        file_path=file_path,
-        date=contract_date
+        contract_id=contract.id, doc_type="contract",
+        file_path=file_path, date=contract_date
     )
     db.add(doc)
     await db.commit()
-    logger.info("Документ договора сохранён: id=%s", doc.id)
 
-    # OCR + NLP - Обработка файла через OCR и NLP для извлечения текста и сущностей
+    # OCR + NLP
     from ocr_nlp import extract_text_from_file, extract_contract_entities
     try:
         text = extract_text_from_file(file_path)
-        logger.info("Текст успешно извлечён из файла (%d символов)", len(text))
-    except Exception as e:
-        logger.error("Ошибка OCR: %s", e)
-        text = ""
-    try:
         entities = extract_contract_entities(text)
-        logger.info("Сущности успешно извлечены: %s", entities)
+        logger.info("Обработка завершена")
     except Exception as e:
-        logger.error("Ошибка NLP: %s", e)
-        entities = {}
+        logger.error("Ошибка: %s", e)
+        text, entities = "", {}
 
     return JSONResponse({
-        "contract_id": contract.id,
-        "file": file_path,
-        "ocr_text": text[:1000],  # первые 1000 символов
-        "entities": entities
+        "contract_id": contract.id, "file": file_path,
+        "ocr_text": text[:500], "entities": entities
     })
 
 # CRUD endpoints for Parties - Эндпоинты для работы со сторонами договоров
