@@ -8,13 +8,18 @@ import {
   Plus, 
   Search,
   Calendar,
-  DollarSign
+  DollarSign,
+  MapPin,
+  Building,
+  Shield
 } from 'lucide-react';
 import { ContractUploadModal } from '@/components/ContractUploadModal';
+import { ContractDetailModal } from '@/components/ContractDetailModal';
 
 export function Contracts() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedContract, setSelectedContract] = useState<any>(null);
   
   const queryClient = useQueryClient();
 
@@ -44,7 +49,9 @@ export function Contracts() {
 
   const filteredContracts = contracts?.filter(contract =>
     contract.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contract.subject?.toLowerCase().includes(searchTerm.toLowerCase())
+    contract.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    contract.work_object_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    contract.contract_type?.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
   return (
@@ -128,12 +135,29 @@ export function Contracts() {
                 <div className="flex-1">
                   <h3 className="text-lg font-medium text-gray-900 mb-2">
                     {contract.number}
+                    {contract.contract_type && (
+                      <span className="ml-2 text-sm text-gray-500">({contract.contract_type})</span>
+                    )}
                   </h3>
                   
                   {contract.subject && (
                     <p className="text-sm text-gray-600 mb-3 line-clamp-2">
                       {contract.subject}
                     </p>
+                  )}
+                  
+                  {contract.work_object_name && (
+                    <div className="flex items-start text-sm text-gray-600 mb-2">
+                      <Building className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                      <span className="line-clamp-1">{contract.work_object_name}</span>
+                    </div>
+                  )}
+                  
+                  {contract.work_object_address && (
+                    <div className="flex items-start text-sm text-gray-500 mb-3">
+                      <MapPin className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                      <span className="line-clamp-1">{contract.work_object_address}</span>
+                    </div>
                   )}
                   
                   <div className="space-y-2">
@@ -145,7 +169,10 @@ export function Contracts() {
                     {contract.amount && (
                       <div className="flex items-center text-sm text-gray-500">
                         <DollarSign className="w-4 h-4 mr-2" />
-                        {formatCurrency(contract.amount)}
+                        {formatCurrency(contract.amount_including_vat || contract.amount)}
+                        {contract.amount_including_vat && contract.vat_rate && (
+                          <span className="ml-1 text-xs">(VAT {contract.vat_rate}%)</span>
+                        )}
                       </div>
                     )}
                     
@@ -153,6 +180,20 @@ export function Contracts() {
                       <div className="flex items-center text-sm text-gray-500">
                         <Calendar className="w-4 h-4 mr-2" />
                         Deadline: {formatDate(contract.deadline)}
+                      </div>
+                    )}
+                    
+                    {contract.warranty_period_months && (
+                      <div className="flex items-center text-sm text-gray-500">
+                        <Shield className="w-4 h-4 mr-2" />
+                        Warranty: {contract.warranty_period_months} months
+                      </div>
+                    )}
+                    
+                    {contract.construction_permit && (
+                      <div className="flex items-center text-sm text-gray-500">
+                        <FileText className="w-4 h-4 mr-2" />
+                        Permit: {contract.construction_permit}
                       </div>
                     )}
                   </div>
@@ -165,11 +206,19 @@ export function Contracts() {
               
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Active
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    contract.status === 'active' ? 'bg-green-100 text-green-800' :
+                    contract.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                    contract.status === 'terminated' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {contract.status || 'Active'}
                   </span>
                   <div className="flex items-center space-x-2">
-                    <button className="text-sm text-primary-600 hover:text-primary-500">
+                    <button 
+                      onClick={() => setSelectedContract(contract)}
+                      className="text-sm text-primary-600 hover:text-primary-500"
+                    >
                       View Details
                     </button>
                     <button 
@@ -195,6 +244,14 @@ export function Contracts() {
             setShowUploadModal(false);
             queryClient.invalidateQueries({ queryKey: ['contracts'] });
           }}
+        />
+      )}
+
+      {/* Detail Modal */}
+      {selectedContract && (
+        <ContractDetailModal
+          contract={selectedContract}
+          onClose={() => setSelectedContract(null)}
         />
       )}
     </div>

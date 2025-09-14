@@ -15,6 +15,15 @@ const contractSchema = z.object({
   penalties: z.string().optional(),
   customer_name: z.string().min(1, 'Customer name is required'),
   contractor_name: z.string().min(1, 'Contractor name is required'),
+  // Extended fields
+  contract_type: z.string().optional(),
+  work_object_name: z.string().optional(),
+  work_object_address: z.string().optional(),
+  cadastral_number: z.string().optional(),
+  construction_permit: z.string().optional(),
+  amount_including_vat: z.string().optional(),
+  vat_rate: z.string().optional(),
+  warranty_period_months: z.string().optional(),
 });
 
 type ContractFormData = z.infer<typeof contractSchema>;
@@ -66,6 +75,9 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
     const uploadData = {
       ...data,
       amount: data.amount ? parseFloat(data.amount) : undefined,
+      amount_including_vat: data.amount_including_vat ? parseFloat(data.amount_including_vat) : undefined,
+      vat_rate: data.vat_rate ? parseFloat(data.vat_rate) : undefined,
+      warranty_period_months: data.warranty_period_months ? parseInt(data.warranty_period_months) : undefined,
       file,
     };
 
@@ -289,6 +301,95 @@ export function ContractUploadModal({ onClose, onSuccess }: ContractUploadModalP
                       rows={3}
                       {...register('penalties')}
                     />
+                  </div>
+
+                  {/* Extended Fields */}
+                  <div className="border-t pt-4">
+                    <h4 className="text-md font-medium text-gray-900 mb-4">Additional Details</h4>
+                    
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="form-group">
+                        <label className="form-label">Contract Type</label>
+                        <select className="input" {...register('contract_type')}>
+                          <option value="">Select type</option>
+                          <option value="подряда">Construction Contract</option>
+                          <option value="поставки">Supply Contract</option>
+                          <option value="услуг">Service Contract</option>
+                          <option value="аренды">Lease Contract</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Construction Permit</label>
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="e.g., №63-301000-130-2021"
+                          {...register('construction_permit')}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Cadastral Number</label>
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="e.g., 63:01:0637003:94"
+                          {...register('cadastral_number')}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">VAT Rate (%)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="input"
+                          placeholder="e.g., 20"
+                          {...register('vat_rate')}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Amount Including VAT</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="input"
+                          {...register('amount_including_vat')}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Warranty Period (months)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          placeholder="e.g., 60"
+                          {...register('warranty_period_months')}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Work Object Name</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Description of construction object"
+                        {...register('work_object_name')}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Work Object Address</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Address of construction site"
+                        {...register('work_object_address')}
+                      />
+                    </div>
                   </div>
 
                   {/* Actions */}

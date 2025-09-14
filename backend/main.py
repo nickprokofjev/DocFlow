@@ -21,8 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import tempfile
 import os
-# from api import router
-# from auth_api import router as auth_router
+from api import router
+from auth_api import router as auth_router
 from exceptions import (
     DocFlowException, 
     docflow_exception_handler, 
@@ -58,9 +58,9 @@ app.add_middleware(
 app.add_exception_handler(Exception, docflow_exception_handler)
 app.add_exception_handler(ValidationError, validation_exception_handler)
 
-# Include API routers - временно отключено для тестирования OCR
-# app.include_router(auth_router)  # No prefix for auth routes
-# app.include_router(router, prefix="/api/v1")
+# Include API routers
+app.include_router(auth_router)  # No prefix for auth routes
+app.include_router(router, prefix="/api/v1")
 
 @app.get("/")
 def root():
