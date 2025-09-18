@@ -5,6 +5,7 @@ DocFlow is a modern, full-featured document management system built with FastAPI
 ## 🚀 Features
 
 ### ✅ **Backend (FastAPI)**
+
 - **REST API** with automatic documentation (Swagger/OpenAPI)
 - **JWT Authentication** with secure user management
 - **OCR Processing** with Tesseract for text extraction
@@ -18,6 +19,7 @@ DocFlow is a modern, full-featured document management system built with FastAPI
 - **Database Migrations** with Alembic
 
 ### ✅ **Frontend (React + TypeScript)**
+
 - **Modern React 18** with TypeScript
 - **Vite** for fast development and building
 - **Tailwind CSS** for responsive design
@@ -30,6 +32,7 @@ DocFlow is a modern, full-featured document management system built with FastAPI
 - **Dashboard** with statistics and recent activity
 
 ### ✅ **DevOps and Deployment**
+
 - **Docker Containerization** for all services
 - **Docker Compose** for easy orchestration
 - **Production-ready** configurations
@@ -62,26 +65,30 @@ DocFlow is a modern, full-featured document management system built with FastAPI
 ## 🚀 Quick Start with Docker
 
 ### 1. Clone the repository
+
 ```bash
 git clone <your-repository-url>
 cd DocFlow
 ```
 
 ### 2. Build and run with Docker Compose
+
 ```bash
 # Production mode
 docker-compose up -d
 
-# Or development mode  
+# Or development mode
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
 ### 3. Access the application
+
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
 ### 4. Default credentials
+
 - **Email**: admin@example.com
 - **Password**: admin123
 
@@ -90,23 +97,23 @@ docker-compose -f docker-compose.dev.yml up -d
 If you encounter "User not found" errors when trying to log in:
 
 #### Quick Fix (Windows):
+
 ```bash
 # Run the demo user creation script
 create_demo_user.bat
 ```
 
 #### Manual Fix:
+
 ```bash
 # Create demo users manually
 python create_demo_user.py
-
-# Or reset admin user
-python backend/create_admin.py
 ```
 
 #### Available Demo Accounts:
+
 - **Admin**: admin@example.com / admin123 (Full access)
-- **Demo**: demo@example.com / demo123 (Demo user) 
+- **Demo**: demo@example.com / demo123 (Demo user)
 - **User**: user@example.com / user123 (Regular user)
 
 ## 🔧 Настройка среды разработки
@@ -193,6 +200,7 @@ DocFlow/
 ### Переменные окружения
 
 #### Бэкенд (.env)
+
 ```bash
 DATABASE_URL=postgresql+asyncpg://user:password@localhost/docflow
 SECRET_KEY=your-super-secret-key-change-in-production
@@ -200,6 +208,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
 #### Фронтенд (.env.local)
+
 ```bash
 VITE_API_URL=http://localhost:8000
 VITE_APP_NAME=DocFlow
@@ -209,12 +218,14 @@ VITE_APP_VERSION=1.0.0
 ## 📊 API Эндпоинты
 
 ### Аутентификация
+
 - `POST /auth/register` - Регистрация нового пользователя
 - `POST /auth/login` - Вход в систему
 - `GET /auth/me` - Получить текущего пользователя
 - `POST /auth/logout` - Выход из системы
 
 ### Стороны
+
 - `GET /api/v1/parties/` - Список сторон
 - `POST /api/v1/parties/` - Создать сторону
 - `GET /api/v1/parties/{id}` - Получить сторону
@@ -222,21 +233,25 @@ VITE_APP_VERSION=1.0.0
 - `DELETE /api/v1/parties/{id}` - Удалить сторону
 
 ### Договоры
+
 - `GET /api/v1/contracts/` - Список договоров
 - `POST /api/v1/contracts/` - Загрузить договор
 - `GET /api/v1/contracts/{id}` - Получить договор
 
 ### Документы
+
 - `GET /api/v1/documents/` - Список документов
 - `GET /api/v1/contracts/{id}/documents` - Получить документы договора
 
 ### Система
+
 - `GET /` - Информация об API
 - `GET /health` - Проверка состояния
 
 ## 🧪 Тестирование
 
 ### Тесты бэкенда
+
 ```bash
 cd backend
 pytest
@@ -245,6 +260,7 @@ pytest test_api.py           # Конкретный файл тестов
 ```
 
 ### Тесты фронтенда
+
 ```bash
 cd frontend
 npm test
@@ -256,6 +272,7 @@ npm run test:coverage        # С покрытием
 ### Продакшен развертывание
 
 1. **Сборка и развертывание с Docker**:
+
 ```bash
 docker-compose up -d
 ```
@@ -307,19 +324,23 @@ docker-compose up -d
 ### Общие проблемы
 
 **Сбой сборки Docker**:
+
 - Убедитесь, что Docker имеет достаточно выделенной памяти (4ГБ+)
 - Проверьте, что демон Docker запущен
 
 **Ошибки подключения к базе данных**:
+
 - Проверьте, что PostgreSQL запущен
 - Проверьте формат DATABASE_URL
 - Убедитесь, что база данных существует
 
 **OCR не работает**:
+
 - Установите Tesseract OCR: `apt-get install tesseract-ocr tesseract-ocr-rus`
 - Проверьте, что tesseract находится в PATH
 
 **Фронтенд не загружается**:
+
 - Проверьте API URL в переменных окружения
 - Убедитесь, что бэкенд доступен
 - Проверьте консоль браузера на ошибки

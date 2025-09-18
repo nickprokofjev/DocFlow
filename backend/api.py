@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import APIRouter
 import os
-from datetime import date
+from datetime import date, datetime
 from uuid import uuid4
 from typing import List, Optional
 from schemas import (
@@ -25,7 +25,7 @@ from schemas import (
     UploadContractRequest, APIResponse, ErrorResponse
 )
 from exceptions import ValidationError, DatabaseError, FileProcessingError, NotFoundError
-from models import Party, Contract, ContractDocument, DocumentLink, User
+from models import Party, Contract, ContractDocument, DocumentLink, ContractAttachment, User
 from auth import get_current_active_user, get_db
 
 # Настройка логгирования
@@ -159,6 +159,101 @@ async def cancel_job(
         data={"job_id": job_id, "status": "cancelled"}
     )
 
+@router.post("/contracts/save-extracted")
+async def save_extracted_contract(
+    contract_data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Сохраняет извлеченные данные договора.
+    """
+    logger.info("Начало сохранения извлеченных данных договора")
+    
+    try:
+        # Создаём стороны если они не существуют
+        customer_name = contract_data.get("customer_name", "Заказчик не указан")
+        contractor_name = contract_data.get("contractor_name", "Подрядчик не указан")
+        
+        # Проверяем существование заказчика
+        result = await db.execute(select(Party).where(Party.name == customer_name, Party.role == "customer"))
+        customer = result.scalar_one_or_none()
+        if not customer:
+            customer = Party(name=customer_name, role="customer")
+            db.add(customer)
+            await db.flush()
+        
+        # Проверяем существование подрядчика
+        result = await db.execute(select(Party).where(Party.name == contractor_name, Party.role == "contractor"))
+        contractor = result.scalar_one_or_none()
+        if not contractor:
+            contractor = Party(name=contractor_name, role="contractor")
+            db.add(contractor)
+            await db.flush()
+        
+        # Создаём договор
+        contract_date_str = contract_data.get("contract_date")
+        if contract_date_str:
+            if isinstance(contract_date_str, str):
+                contract_date = datetime.fromisoformat(contract_date_str.replace('Z', '+00:00')).date()
+            else:
+                contract_date = contract_date_str
+        else:
+            contract_date = date.today()
+        
+        contract = Contract(
+            number=contract_data.get("number", "Без номера"),
+            date=contract_date,
+            subject=contract_data.get("subject"),
+            amount=contract_data.get("amount"),
+            deadline=contract_data.get("deadline"),
+            penalties=contract_data.get("penalties"),
+            customer_id=customer.id,
+            contractor_id=contractor.id,
+            contract_type=contract_data.get("contract_type"),
+            work_object_name=contract_data.get("work_object_name"),
+            work_object_address=contract_data.get("work_object_address"),
+            cadastral_number=contract_data.get("cadastral_number"),
+            construction_permit=contract_data.get("construction_permit"),
+            amount_including_vat=contract_data.get("amount_including_vat"),
+            vat_rate=contract_data.get("vat_rate"),
+            warranty_period_months=contract_data.get("warranty_period_months"),
+            status="active",
+            created_by_user_id=current_user.id
+        )
+        db.add(contract)
+        await db.flush()
+        
+        # Сохраняем приложения если они есть
+        attachments = contract_data.get("attachments", [])
+        if isinstance(attachments, list):
+            for attachment_data in attachments:
+                if isinstance(attachment_data, dict):
+                    attachment = ContractAttachment(
+                        contract_id=contract.id,
+                        attachment_type=attachment_data.get("type", "specification"),
+                        title=attachment_data.get("title", "Без названия"),
+                        number=attachment_data.get("number"),
+                        is_integral_part=True
+                    )
+                    db.add(attachment)
+        
+        await db.commit()
+        await db.refresh(contract)
+        
+        logger.info(f"Договор сохранен с ID: {contract.id}")
+        
+        return APIResponse(
+            success=True,
+            message="Договор успешно сохранен",
+            data={"contract_id": contract.id}
+        )
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Ошибка при сохранении договора: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при сохранении договора: {str(e)}")
+
 @router.post("/contracts/")
 async def create_contract(
     number: str = Form(...),
@@ -237,6 +332,27 @@ async def create_contract(
     except Exception as e:
         logger.error("Ошибка: %s", e)
         text, entities = "", {}
+
+    # Process extracted entities and save attachments if they exist
+    if entities and isinstance(entities, dict) and "attachments" in entities:
+        try:
+            attachments_data = entities["attachments"]
+            if isinstance(attachments_data, list):
+                for attachment_data in attachments_data:
+                    if isinstance(attachment_data, dict):
+                        attachment = ContractAttachment(
+                            contract_id=contract.id,
+                            attachment_type=attachment_data.get("type", "specification"),
+                            title=attachment_data.get("title", "Без названия"),
+                            number=attachment_data.get("number"),
+                            is_integral_part=True
+                        )
+                        db.add(attachment)
+                await db.commit()
+                logger.info(f"Сохранено {len(attachments_data)} приложений")
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении приложений: {e}")
+            await db.rollback()
 
     return JSONResponse({
         "contract_id": contract.id, "file": file_path,

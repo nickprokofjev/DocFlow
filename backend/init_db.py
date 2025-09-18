@@ -47,23 +47,33 @@ async def init_database():
             await conn.run_sync(Base.metadata.create_all)
             logger.info("Все таблицы успешно созданы")
             
-        # Create default user if none exists
+        # Create default user if admin user doesn't exist
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
         from sqlalchemy import select
         from models import User
         async_session = async_sessionmaker(bind=engine, expire_on_commit=False)
         async with async_session() as session:
-            # Check if any users exist
-            result = await session.execute(select(User))
-            existing_users = result.scalars().all()
+            # Check if admin user already exists and verify password
+            result = await session.execute(select(User).where(User.username == 'admin'))
+            existing_admin = result.scalar_one_or_none()
             
-            if not existing_users:
+            admin_needs_creation = True
+            if existing_admin:
+                # Test if existing password is correct
+                from auth import verify_password
+                if verify_password("admin123", existing_admin.hashed_password):
+                    logger.info("Admin user already exists with correct password")
+                    admin_needs_creation = False
+                else:
+                    logger.warning("Admin user exists but password is incorrect, recreating...")
+                    await session.delete(existing_admin)
+                    await session.commit()
+            
+            if admin_needs_creation:
                 default_user = create_default_user()
                 session.add(default_user)
                 await session.commit()
                 logger.info("Default admin user created: admin@example.com / admin123")
-            else:
-                logger.info("Users already exist, skipping default user creation")
             
         await engine.dispose()
         logger.info("Database initialization completed")

@@ -25,6 +25,7 @@ RUN apt-get update \
         libxrender-dev \
         libgomp1 \
         wget \
+        postgresql-client \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -41,6 +42,9 @@ RUN mkdir -p /app/uploads
 # Copy application code
 COPY . .
 
+# Make init script executable
+RUN chmod +x /app/docker_init.sh
+
 # Create non-root user
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app
@@ -54,4 +58,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "start.py"]
+CMD ["/app/docker_init.sh"]

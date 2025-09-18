@@ -1,4 +1,4 @@
-# Development Dockerfile for frontend with hot reload
+# Development stage
 FROM node:18-alpine
 
 # Set working directory
@@ -7,18 +7,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies including dev dependencies
+# Install dependencies
 RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Expose port 5173 (Vite default)
+# Expose port 5173 for Vite development server
 EXPOSE 5173
 
-# Health check for development server
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:5173/ || exit 1
-
-# Start development server with hot reload
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+# Start development server with hot reloading
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

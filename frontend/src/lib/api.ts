@@ -1,249 +1,196 @@
-import axios, { AxiosResponse } from 'axios';
-import type { User } from '@/types';
+import axios, { AxiosResponse, InternalAxiosRequestConfig } from "axios";
 
 // Base API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = "http://localhost:8000";
 
-console.log('API Base URL:', API_BASE_URL);
+console.log("API Base URL:", API_BASE_URL);
 
 // Create axios instance
-const api = axios.create({
+const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
 // Request interceptor to add auth token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+apiClient.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = localStorage.getItem("token");
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    console.log("API Request:", config);
+    return config;
+  },
+  (error: any) => {
+    return Promise.reject(error);
   }
-  console.log('API Request:', config);
-  return config;
-});
+);
 
-// Response interceptor for error handling
-api.interceptors.response.use(
-  (response) => {
-    console.log('API Response:', response);
+// Response interceptor to handle errors
+apiClient.interceptors.response.use(
+  (response: AxiosResponse) => {
     return response;
   },
-  (error) => {
-    console.error('API Error:', error);
-    console.error('API Error Response:', error.response);
-    console.error('API Error Request:', error.request);
-    console.error('API Error Config:', error.config);
-    
-    // Only redirect to login for 401 errors that are NOT during login attempts
-    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
-      // Token expired or invalid
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+  (error: any) => {
+    console.error("API Error:", error);
+    console.error("API Error Response:", error.response);
+    console.error("API Error Request:", error.request);
+    console.error("API Error Config:", error.config);
+
+    if (error.response?.status === 401) {
+      // Clear auth data on 401
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      // Don't redirect here, let the component handle it
     }
     return Promise.reject(error);
   }
 );
 
-// Job Status Type
-export type JobStatus = {
-  job_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  progress: number;
-  message: string;
-  result?: any;
-  error?: string;
-  created_at?: string;
-  started_at?: string;
-  completed_at?: string;
-};
+// Types
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: {
+    id: number;
+    email: string;
+    username: string;
+    is_active: boolean;
+    created_at: string;
+  };
+}
+
+export interface RegisterRequest {
+  email: string;
+  username: string;
+  password: string;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  username: string;
+  is_active: boolean;
+  created_at: string;
+}
 
 // Auth API
 export const authAPI = {
-  login: async (credentials: { username: string; password: string }) => {
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    // Use form data for OAuth2PasswordRequestForm
     const formData = new FormData();
-    formData.append('username', credentials.username);
-    formData.append('password', credentials.password);
-    
-    const response: AxiosResponse<{
-      access_token: string;
-      token_type: string;
-      user: User;
-    }> = await api.post('/auth/login', formData, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-    
+    formData.append("username", credentials.username);
+    formData.append("password", credentials.password);
+
+    const response = await apiClient.post<LoginResponse>(
+      "/auth/login",
+      formData,
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
     return response.data;
   },
 
-  register: async (userData: {
-    email: string;
-    username: string;
-    password: string;
-  }) => {
-    const response: AxiosResponse<User> = await api.post('/auth/register', userData);
+  async register(userData: RegisterRequest): Promise<User> {
+    const response = await apiClient.post<User>("/auth/register", userData);
     return response.data;
   },
 
-  getCurrentUser: async (): Promise<User> => {
-    const response: AxiosResponse<User> = await api.get('/auth/me');
+  async getCurrentUser(): Promise<User> {
+    const response = await apiClient.get<User>("/auth/me");
     return response.data;
   },
 
-  logout: async () => {
-    await api.post('/auth/logout');
+  async logout(): Promise<void> {
+    await apiClient.post("/auth/logout");
   },
 };
 
 // Contracts API
 export const contractsAPI = {
-  getAll: async (params?: { limit?: number }) => {
-    const response = await api.get('/api/v1/contracts', { params });
+  async getAll(params?: { limit?: number }): Promise<any[]> {
+    const response = await apiClient.get("/api/v1/contracts", { params });
     return response.data;
   },
 
-  getById: async (id: number) => {
-    const response = await api.get(`/api/v1/contracts/${id}`);
+  async create(data: any): Promise<any> {
+    const response = await apiClient.post("/api/v1/contracts", data);
     return response.data;
   },
 
-  create: async (contractData: any) => {
-    const response = await api.post('/api/v1/contracts', contractData);
+  async update(id: number, data: any): Promise<any> {
+    const response = await apiClient.put(`/api/v1/contracts/${id}`, data);
     return response.data;
   },
 
-  update: async (id: number, contractData: any) => {
-    const response = await api.put(`/api/v1/contracts/${id}`, contractData);
-    return response.data;
+  async delete(id: number): Promise<void> {
+    await apiClient.delete(`/api/v1/contracts/${id}`);
   },
 
-  delete: async (id: number) => {
-    await api.delete(`/api/v1/contracts/${id}`);
-  },
-
-  uploadDocument: async (contractId: number, file: File) => {
+  async upload(file: File): Promise<any> {
     const formData = new FormData();
-    formData.append('file', file);
-    
-    const response = await api.post(`/api/v1/contracts/${contractId}/upload`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    
-    return response.data;
-  },
-  
-  // Document processing methods
-  extractData: async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const response = await api.post('/api/v1/contracts/extract', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    
-    return response.data;
-  },
-  
-  getJobStatus: async (jobId: string) => {
-    const response = await api.get(`/api/v1/jobs/${jobId}/status`);
-    return response.data;
-  },
-  
-  cancelJob: async (jobId: string) => {
-    const response = await api.post(`/api/v1/jobs/${jobId}/cancel`);
-    return response.data;
-  },
-  
-  upload: async (uploadData: any) => {
-    const formData = new FormData();
-    
-    // Add all form fields
-    Object.keys(uploadData).forEach(key => {
-      if (key === 'file' && uploadData[key]) {
-        formData.append(key, uploadData[key]);
-      } else if (uploadData[key] !== undefined && uploadData[key] !== null) {
-        formData.append(key, uploadData[key].toString());
+    formData.append("file", file);
+
+    const response = await apiClient.post(
+      "/api/v1/contracts/upload",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       }
-    });
-    
-    const response = await api.post('/api/v1/contracts/', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    
+    );
     return response.data;
-  }
+  },
 };
 
 // Parties API
 export const partiesAPI = {
-  getAll: async (params?: { limit?: number }) => {
-    const response = await api.get('/api/v1/parties', { params });
+  async getAll(params?: { role?: string; limit?: number }): Promise<any[]> {
+    const response = await apiClient.get("/api/v1/parties", { params });
     return response.data;
   },
 
-  getById: async (id: number) => {
-    const response = await api.get(`/api/v1/parties/${id}`);
+  async create(data: any): Promise<any> {
+    const response = await apiClient.post("/api/v1/parties", data);
     return response.data;
   },
 
-  create: async (partyData: any) => {
-    const response = await api.post('/api/v1/parties', partyData);
+  async update(id: number, data: any): Promise<any> {
+    const response = await apiClient.put(`/api/v1/parties/${id}`, data);
     return response.data;
   },
 
-  update: async (id: number, partyData: any) => {
-    const response = await api.put(`/api/v1/parties/${id}`, partyData);
-    return response.data;
-  },
-
-  delete: async (id: number) => {
-    await api.delete(`/api/v1/parties/${id}`);
-  },
-};
-
-// Documents API
-export const documentsAPI = {
-  getAll: async () => {
-    const response = await api.get('/api/v1/documents');
-    return response.data;
-  },
-
-  getById: async (id: number) => {
-    const response = await api.get(`/api/v1/documents/${id}`);
-    return response.data;
-  },
-};
-
-// Dashboard API
-export const dashboardAPI = {
-  getStats: async () => {
-    const response = await api.get('/api/v1/dashboard/stats');
-    return response.data;
-  },
-
-  getRecentActivity: async () => {
-    const response = await api.get('/api/v1/dashboard/recent');
-    return response.data;
+  async delete(id: number): Promise<void> {
+    await apiClient.delete(`/api/v1/parties/${id}`);
   },
 };
 
 // Health API
 export const healthAPI = {
-  check: async () => {
-    const response = await api.get('/health');
+  async check(): Promise<{ status: string; timestamp: string }> {
+    const response = await apiClient.get("/health");
     return response.data;
   },
 };
 
-export { api };
-export default api;
+// Job Status for file uploads
+export interface JobStatus {
+  id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  progress?: number;
+  result?: any;
+  error?: string;
+}
+
+export { apiClient };

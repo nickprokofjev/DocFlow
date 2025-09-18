@@ -1,0 +1,43 @@
+Here's the list of commands to completely stop, remove, clean cache, and rebuild all containers from scratch:
+Stop all running containers:
+bash
+cd c:\DocFlow
+docker-compose -f docker-compose.dev.yml down
+
+Remove all containers:
+bash
+docker container prune -f
+
+Remove all volumes:
+bash
+docker volume prune -f
+
+Remove all networks:
+bash
+docker network prune -f
+
+Remove all images (optional, but ensures clean rebuild):
+bash
+docker rmi -f $(docker images -aq)
+
+Clean Docker build cache:
+bash
+docker builder prune -a -f
+
+Remove any dangling images:
+bash
+docker image prune -f
+
+Rebuild and start containers from scratch:
+bash
+cd c:\DocFlow
+docker-compose -f docker-compose.dev.yml up --build -d
+
+Check container status:
+bash
+docker-compose -f docker-compose.dev.yml ps
+View logs for troubleshooting (if needed):
+
+bash
+docker-compose -f docker-compose.dev.yml logs
+This sequence will give you a completely clean environment, similar to the first installation.

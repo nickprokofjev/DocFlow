@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: docflow_postgres_init
+    environment:
+      POSTGRES_DB: docflow
+      POSTGRES_USER: docflow_user
+      POSTGRES_PASSWORD: docflow_password
+    volumes:
+      - postgres_init_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - docflow_init_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docflow_user -d docflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Database Initialization Service
+  db-init:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: docflow_db_init
+    environment:
+      DATABASE_URL: postgresql://docflow_user:docflow_password@postgres:5432/docflow
+    volumes:
+      - ./backend:/app
+    networks:
+      - docflow_init_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "init_db_docker.py"]
+
+volumes:
+  postgres_init_data:
+    driver: local
+
+networks:
+  docflow_init_network:
+    driver: bridge
