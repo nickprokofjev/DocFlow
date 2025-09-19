@@ -18,6 +18,7 @@ import os
 from datetime import date, datetime
 from uuid import uuid4
 from typing import List, Optional
+import dateutil.parser
 from schemas import (
     PartyCreate, PartyUpdate, PartyResponse,
     ContractCreate, ContractResponse, ContractWithPartiesResponse,
@@ -191,22 +192,60 @@ async def save_extracted_contract(
             db.add(contractor)
             await db.flush()
         
-        # Создаём договор
+        # Вспомогательная функция для безопасного преобразования значений
+        def safe_numeric(value):
+            """Преобразует значение в число или возвращает None, если значение пустое или недопустимое."""
+            if value is None or value == "" or (isinstance(value, str) and value.strip() == ""):
+                return None
+            try:
+                # Если значение уже является числом, возвращаем его
+                if isinstance(value, (int, float)):
+                    return value
+                # Если это строка, пытаемся преобразовать
+                if isinstance(value, str):
+                    # Убираем пробелы и заменяем запятые на точки для десятичных дробей
+                    value = value.strip().replace(',', '.')
+                    if '.' in value:
+                        return float(value)
+                    else:
+                        return int(value)
+                return value
+            except (ValueError, TypeError):
+                return None
+        
+        def safe_date(value):
+            """Преобразует значение в дату или возвращает None, если значение пустое или недопустимое."""
+            if value is None or value == "" or (isinstance(value, str) and value.strip() == ""):
+                return None
+            try:
+                if isinstance(value, str):
+                    # Пытаемся распарсить дату в различных форматах
+                    if 'T' in value:
+                        return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
+                    # Простая попытка парсинга даты
+                    import dateutil.parser
+                    return dateutil.parser.parse(value).date()
+                elif isinstance(value, datetime):
+                    return value.date()
+                return value
+            except (ValueError, TypeError):
+                return None
+        
+        # Создаём договор с безопасным преобразованием значений
         contract_date_str = contract_data.get("contract_date")
+        contract_date = None
         if contract_date_str:
-            if isinstance(contract_date_str, str):
-                contract_date = datetime.fromisoformat(contract_date_str.replace('Z', '+00:00')).date()
-            else:
-                contract_date = contract_date_str
-        else:
+            contract_date = safe_date(contract_date_str)
+        if not contract_date:
             contract_date = date.today()
         
+        # Применяем safe_numeric ко всем числовым полям и safe_date ко всем полям дат
         contract = Contract(
             number=contract_data.get("number", "Без номера"),
             date=contract_date,
             subject=contract_data.get("subject"),
-            amount=contract_data.get("amount"),
-            deadline=contract_data.get("deadline"),
+            amount=safe_numeric(contract_data.get("amount")),
+            deadline=safe_date(contract_data.get("deadline")),
             penalties=contract_data.get("penalties"),
             customer_id=customer.id,
             contractor_id=contractor.id,
@@ -214,11 +253,29 @@ async def save_extracted_contract(
             work_object_name=contract_data.get("work_object_name"),
             work_object_address=contract_data.get("work_object_address"),
             cadastral_number=contract_data.get("cadastral_number"),
+            land_area=safe_numeric(contract_data.get("land_area")),
             construction_permit=contract_data.get("construction_permit"),
-            amount_including_vat=contract_data.get("amount_including_vat"),
-            vat_rate=contract_data.get("vat_rate"),
-            warranty_period_months=contract_data.get("warranty_period_months"),
+            permit_date=safe_date(contract_data.get("permit_date")),
+            amount_including_vat=safe_numeric(contract_data.get("amount_including_vat")),
+            vat_amount=safe_numeric(contract_data.get("vat_amount")),
+            vat_rate=safe_numeric(contract_data.get("vat_rate")),
+            retention_percentage=safe_numeric(contract_data.get("retention_percentage")),
+            payment_terms_days=safe_numeric(contract_data.get("payment_terms_days")),
+            work_start_date=safe_date(contract_data.get("work_start_date")),
+            work_completion_date=safe_date(contract_data.get("work_completion_date")),
+            warranty_period_months=safe_numeric(contract_data.get("warranty_period_months")),
+            warranty_start_basis=contract_data.get("warranty_start_basis"),
+            delay_penalty_first_week=safe_numeric(contract_data.get("delay_penalty_first_week")),
+            delay_penalty_after_week=safe_numeric(contract_data.get("delay_penalty_after_week")),
+            late_payment_penalty=safe_numeric(contract_data.get("late_payment_penalty")),
+            document_penalty_amount=safe_numeric(contract_data.get("document_penalty_amount")),
+            site_violation_penalty=safe_numeric(contract_data.get("site_violation_penalty")),
+            project_documentation=contract_data.get("project_documentation"),
             status="active",
+            currency=contract_data.get("currency", "RUB"),
+            force_majeure_clause=contract_data.get("force_majeure_clause"),
+            dispute_resolution=contract_data.get("dispute_resolution"),
+            governing_law=contract_data.get("governing_law"),
             created_by_user_id=current_user.id
         )
         db.add(contract)
