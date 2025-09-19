@@ -128,22 +128,6 @@ export function ContractUploadModal({
     },
   });
 
-  // Мутация для сохранения контракта
-  const uploadMutation = useMutation({
-    mutationFn: (data: any) => contractsAPI.upload(data),
-    onSuccess: () => {
-      setStep("success");
-      setTimeout(() => {
-        handleClose();
-        onSuccess();
-      }, 2000);
-    },
-    onError: (error: any) => {
-      setErrorMessage(error.message || "Ошибка при сохранении");
-      setStep("error");
-    },
-  });
-
   // Мутация для сохранения извлеченных данных
   const saveExtractedMutation = useMutation({
     mutationFn: (data: any) => contractsAPI.saveExtracted(data),

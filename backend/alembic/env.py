@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import your models here
 from models import Base
+from db import SYNC_DATABASE_URL
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -39,7 +40,8 @@ target_metadata = Base.metadata
 
 def get_database_url():
     """Get database URL from environment variable."""
-    return os.getenv('DATABASE_URL', 'postgresql://user:password@localhost/docflow')
+    # Use synchronous database URL for Alembic migrations
+    return os.getenv('DATABASE_URL', SYNC_DATABASE_URL).replace('+asyncpg', '')
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

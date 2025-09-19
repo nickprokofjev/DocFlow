@@ -158,7 +158,7 @@ class ContractAttachment(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     contract_id: Mapped[int] = mapped_column(Integer, ForeignKey('contracts.id'))
     attachment_type: Mapped[str] = mapped_column(String, nullable=False)  # Тип: estimate, schedule, specification, technical_map, etc.
-    title: Mapped[str] = mapped_column(String, nullable=False)  # Название приложения
+    title: Mapped[str] = mapped_column(Text, nullable=False)  # Название приложения
     number: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # Номер приложения
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Описание
     file_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # Путь к файлу
