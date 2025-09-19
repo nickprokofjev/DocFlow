@@ -1,4 +1,4 @@
-import axios, { AxiosResponse, InternalAxiosRequestConfig } from "axios";
+import axios from "axios";
 
 // Base API configuration
 const API_BASE_URL = "http://localhost:8000";
@@ -15,7 +15,7 @@ const apiClient = axios.create({
 
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  (config: any) => {
     const token = localStorage.getItem("token");
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -30,7 +30,7 @@ apiClient.interceptors.request.use(
 
 // Response interceptor to handle errors
 apiClient.interceptors.response.use(
-  (response: AxiosResponse) => {
+  (response: any) => {
     return response;
   },
   (error: any) => {
@@ -119,7 +119,9 @@ export const authAPI = {
 // Contracts API
 export const contractsAPI = {
   async getAll(params?: { limit?: number }): Promise<any[]> {
-    const response = await apiClient.get("/api/v1/contracts", { params });
+    const response = await apiClient.get<any[]>("/api/v1/contracts", {
+      params,
+    });
     return response.data;
   },
 
@@ -133,8 +135,9 @@ export const contractsAPI = {
     return response.data;
   },
 
-  async delete(id: number): Promise<void> {
-    await apiClient.delete(`/api/v1/contracts/${id}`);
+  async delete(id: number): Promise<any> {
+    const response = await apiClient.delete(`/api/v1/contracts/${id}`);
+    return response.data;
   },
 
   async upload(file: File): Promise<any> {
@@ -152,12 +155,48 @@ export const contractsAPI = {
     );
     return response.data;
   },
+
+  async extractData(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await apiClient.post(
+      "/api/v1/contracts/extract",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return response.data;
+  },
+
+  async getJobStatus(jobId: string): Promise<any> {
+    const response = await apiClient.get(`/api/v1/jobs/${jobId}/status`);
+    return response.data;
+  },
+
+  async saveExtracted(data: any): Promise<any> {
+    const response = await apiClient.post(
+      "/api/v1/contracts/save-extracted",
+      data
+    );
+    return response.data;
+  },
+
+  async cancelJob(jobId: string): Promise<any> {
+    const response = await apiClient.post(`/api/v1/jobs/${jobId}/cancel`);
+    return response.data;
+  },
 };
 
 // Parties API
 export const partiesAPI = {
   async getAll(params?: { role?: string; limit?: number }): Promise<any[]> {
-    const response = await apiClient.get("/api/v1/parties", { params });
+    const response = await apiClient.get<any[]>("/api/v1/parties", {
+      params,
+    });
     return response.data;
   },
 
@@ -171,15 +210,18 @@ export const partiesAPI = {
     return response.data;
   },
 
-  async delete(id: number): Promise<void> {
-    await apiClient.delete(`/api/v1/parties/${id}`);
+  async delete(id: number): Promise<any> {
+    const response = await apiClient.delete(`/api/v1/parties/${id}`);
+    return response.data;
   },
 };
 
 // Health API
 export const healthAPI = {
   async check(): Promise<{ status: string; timestamp: string }> {
-    const response = await apiClient.get("/health");
+    const response = await apiClient.get<{ status: string; timestamp: string }>(
+      "/health"
+    );
     return response.data;
   },
 };

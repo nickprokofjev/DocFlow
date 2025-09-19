@@ -426,7 +426,7 @@ export function ContractUploadModal({
 
                 {/* Статус сообщение */}
                 <p className="text-gray-600 mb-4">
-                  {jobStatus?.message || "Подготовка к обработке..."}
+                  {jobStatus?.status || "Подготовка к обработке..."}
                 </p>
 
                 {/* Подсказка о времени */}
